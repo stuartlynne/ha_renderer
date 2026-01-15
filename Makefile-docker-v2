@@ -1,0 +1,102 @@
+
+# N.b. This Makefile is set up to build containers and images with same name as the directory.
+#
+# Each container:
+#	- MAY have a Dockerfile to build the image, 
+#	- MUST have a docker-compose.yml file to create the container.
+# 
+# Each container directory should have:
+#	ln -s ../Makefile-docker .
+#
+# To define container:
+#
+#    1. Optional Dockerfile - Dockerfile to build the CONTAINER:private image if required 
+#    2. docker-compose.yml - docker-compose file to create the CONTAINER:private container
+#    3. docker.env - environment variables to pass to docker-compose when creating the container
+#    4. CONTAINER.env - environment variables to pass to docker-compose when creating the container
+#
+# N.b. Assuming tab completion is set up for make, you can type 'make' and then press tab to see the available targets.
+#
+CONTAINER = $(shell basename $(CURDIR))
+
+# Make the container name available to the docker-compose, note that this is the default container name
+# and can be overridden by setting the CONTAINER variable in the docker.env or $(CONTAINER).env file
+export CONTAINER_NAME := $(CONTAINER)
+export IMAGE_NAME := $(IMAGE)
+
+# Define the image name.
+IMAGE = $(shell basename $(CURDIR)):private
+
+# make the contents of docker.env or $(CONTAINER).env available to docker-compose 
+ENV = $(shell basename $(CURDIR)).env
+HOSTNAME = $(shell hostname)
+
+-include docker.env
+-include $(ENV)
+.EXPORT_ALL_VARIABLES:
+
+.PHONY: all build up down clean really-clean bash logs test
+
+all:
+	@echo "make build - build $(IMAGE) image"
+	@echo "make up - start $(CONTAINER) container"
+	@echo "make down - stop $(CONTAINER) container"
+	@echo "make clean - remove $(CONTAINER) container"
+	@echo "make really-clean - remove $(CONTAINER) container and $(IMAGE) image"
+	@echo "make bash - start a bash shell in $(CONTAINER) container"
+	@echo "make logs - show container logs"
+	@echo "make test - show variables"
+
+# show variables that will be used
+test:
+	@echo CONTAINER:$(CONTAINER)
+	@echo IMAGE:$(IMAGE)
+	@echo DOCKERBUILDARGS:$(DOCKERBUILDARGS)
+	@echo CSRF_TRUSTED_ORIGINS:$(CSRF_TRUSTED_ORIGINS)
+	@echo HOSTNAME: $(HOSTNAME)
+	#echo
+	#@env
+
+# build the image
+rebuild: really-clean build
+nocache:
+	echo BUILD
+	if [ -s 'Dockerfile' ]; then docker build --no-cache ${DOCKERBUILDARGS} --tag $(IMAGE) .;  fi
+build:
+	echo BUILD
+	if [ -s 'Dockerfile' ]; then docker build ${DOCKERBUILDARGS} --tag $(IMAGE) .;  fi
+
+
+# start the container
+up: build
+	docker compose up -d
+
+upw: build
+	docker compose up
+
+# stop the container
+down:
+	docker compose down
+
+# remove the container
+clean:
+	-docker container rm --force --volumes $(CONTAINER) 
+
+# remove the container and private image
+really-clean: clean
+	-docker image rm --force $(IMAGE)
+	
+
+## docker helpers
+# start a bash shell in the container
+bash:
+	docker exec -it $(CONTAINER) bash
+
+# show and follow container logs 
+logs:
+	docker logs -f $(CONTAINER)
+
+commit:
+	docker commit $(IMAGE) 
+	docker save -o $(IMAGE).tar $(IMAGE)
+
