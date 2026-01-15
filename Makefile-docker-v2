@@ -11,6 +11,7 @@
 # To define container:
 #
 #    1. Optional Dockerfile - Dockerfile to build the CONTAINER:private image if required 
+#
 #    2. docker-compose.yml - docker-compose file to create the CONTAINER:private container
 #    3. docker.env - environment variables to pass to docker-compose when creating the container
 #    4. CONTAINER.env - environment variables to pass to docker-compose when creating the container
