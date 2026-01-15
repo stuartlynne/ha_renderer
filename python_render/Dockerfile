@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY app.py /app/app.py
 COPY templates /app/templates
+COPY fonts /app/fonts
 
 ENV HOST=0.0.0.0
 ENV PORT=9080

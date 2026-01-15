@@ -1,5 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="{{ width }}" height="{{ height }}" viewBox="0 0 {{ width }} {{ height }}">
   <style>
+    @font-face {
+      font-family: "TGL_0-1451Eng";
+      src: url("../fonts/TGL_0-1451Eng.ttf");
+    }
     text { font-family: "DejaVu Sans", Arial, sans-serif; fill: #000; }
     .title { font-size: 40px; font-weight: 700; }
     .label { font-size: 22px; fill: #333; }
@@ -9,10 +13,13 @@
     .mid { fill: #000; font-weight: 700; }
     .bar { font-weight: 400; }
     .divider { stroke: #aaa; stroke-width: 3; }
-    .icon { font-size: 22px; }
+    .icon { font-size: 31px; }
     .small { font-size: 19px; }
-    .tiny { font-size: 16px; }
+    .tiny { font-size: 17px; }
+    .tiny-top { font-size: 20px; }
     .day { font-size: 22px; font-weight: 700; }
+    .temp { font-family: "TGL_0-1451Eng", "DejaVu Sans", Arial, sans-serif; }
+    .tall { transform: scale(1, 1.3); transform-origin: center; }
   </style>
   <rect x="0" y="0" width="{{ width }}" height="{{ height }}" fill="#fff" />
 
@@ -21,10 +28,10 @@
     {{ current_weather.condition or "--" }} {% if current_weather.icon %}{{ current_weather.icon }}{% endif %}
   </text>
   {% set top_temp = outside.temp_pair if outside and outside.temp_pair else current_weather.temp_pair %}
-  <text x="{{ width - 258 }}" y="50" class="value" text-anchor="end">
+  <text x="{{ width - 258 }}" y="50" class="value temp tall" text-anchor="end">
     {{ top_temp.c }}
   </text>
-  <text x="{{ width - 256 }}" y="50" class="tiny" text-anchor="start">
+  <text x="{{ width - 256 }}" y="50" class="tiny temp tall" text-anchor="start">
     <tspan class="bar">|</tspan>{{ top_temp.f }}
   </text>
   <text x="20" y="86" class="label">
@@ -36,6 +43,14 @@
   <text x="520" y="86" class="label">
     Wind: {% if current_weather.wind_speed is not none %}{{ current_weather.wind_speed }}{% else %}--{% endif %}
   </text>
+  {% if top_temp %}
+  <text x="{{ width - 220 }}" y="46" class="title temp" text-anchor="end">
+    {{ top_temp.c }}
+  </text>
+  <text x="{{ width - 218 }}" y="46" class="tiny-top temp" text-anchor="start">
+    <tspan class="bar">|</tspan><tspan dx="2">{{ top_temp.f }}</tspan>
+  </text>
+  {% endif %}
 
   <line x1="20" y1="110" x2="{{ width - 20 }}" y2="110" class="divider" />
 
@@ -47,13 +62,13 @@
     {% set slot = (width - 40) / hourly_count %}
     {% for item in forecast_hourly %}
       {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
-      <text x="{{ x }}" y="162" text-anchor="middle" class="small">{{ item.label or "" }}</text>
-      <text x="{{ x }}" y="188" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
-      <text x="{{ x + 2 }}" y="212" text-anchor="end" class="label mid">
+      <text x="{{ x }}" y="154" text-anchor="middle" class="small">{{ item.label or "" }}</text>
+      <text x="{{ x }}" y="178" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
+      <text x="{{ x + 2 }}" y="216" text-anchor="end" class="label mid temp tall">
         {{ item.temperature.c }}
       </text>
-      <text x="{{ x + 4 }}" y="212" text-anchor="start" class="tiny">
-        <tspan class="bar">|</tspan>{{ item.temperature.f }}
+      <text x="{{ x + 4 }}" y="216" text-anchor="start" class="tiny temp tall">
+        <tspan class="bar">|</tspan><tspan dx="2">{{ item.temperature.f }}</tspan>
       </text>
     {% endfor %}
   {% endif %}
@@ -68,27 +83,30 @@
     {% set slot = (width - 40) / daily_count %}
     {% for item in forecast_daily %}
       {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
-      <text x="{{ x }}" y="282" text-anchor="middle" class="day">{{ item.label or "" }}</text>
-      <text x="{{ x }}" y="308" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
-      <text x="{{ x + 2 }}" y="334" text-anchor="end" class="label mid">
+      <text x="{{ x }}" y="276" text-anchor="middle" class="day">{{ item.label or "" }}</text>
+      <text x="{{ x }}" y="310" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
+      <text x="{{ x + 2 }}" y="320" text-anchor="end" class="label mid temp tall">
         {{ item.temperature.c }}
       </text>
-      <text x="{{ x + 4 }}" y="334" text-anchor="start" class="tiny">
-        <tspan class="bar">|</tspan>{{ item.temperature.f }}
+      <text x="{{ x + 4 }}" y="320" text-anchor="start" class="tiny temp tall">
+        <tspan class="bar">|</tspan><tspan dx="2">{{ item.temperature.f }}</tspan>
       </text>
-      <text x="{{ x + 2 }}" y="356" text-anchor="end" class="small dim">
+      <text x="{{ x + 2 }}" y="338" text-anchor="end" class="small dim temp tall">
         {{ item.templow.c }}
       </text>
-      <text x="{{ x + 4 }}" y="356" text-anchor="start" class="tiny">
-        <tspan class="bar">|</tspan>{{ item.templow.f }}
+      <text x="{{ x + 4 }}" y="338" text-anchor="start" class="tiny temp tall">
+        <tspan class="bar">|</tspan><tspan dx="2">{{ item.templow.f }}</tspan>
       </text>
     {% endfor %}
   {% endif %}
 
-  <line x1="20" y1="{{ height - 60 }}" x2="{{ width - 20 }}" y2="{{ height - 60 }}" class="divider" />
+  <line x1="20" y1="{{ height - 72 }}" x2="{{ width - 20 }}" y2="{{ height - 72 }}" class="divider" />
 
-  <text x="20" y="{{ height - 28 }}" class="small muted">
-    {{ now }} | IP: {{ device.ip or "--" }}
+  <text x="20" y="{{ height - 28 }}" class="temp" style="font-size: 21px; font-weight: 700; fill: #555;" transform="scale(1,1.2)" transform-origin="left {{ height - 28 }}px">
+    {{ now }}
+  </text>
+  <text x="260" y="{{ height - 28 }}" class="small muted">
+    {{ device.ip or "--" }}
   </text>
   <text x="{{ width - 380 }}" y="{{ height - 28 }}" class="small muted">
     Δ: {{ "%.0fs" % (meta.last_display_delta or 0) }}

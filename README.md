@@ -32,6 +32,7 @@ Local Home Assistant data-to-PNG renderer intended for TRMNL BYOS.
    - DISPLAY_REFRESH_RATE: device poll interval returned in /api/display (defaults to REFRESH_SECONDS)
    - REFRESH_SECONDS: when set, renderer pre-renders on a loop; when empty, render on /api/display
    - MAX_CACHE_PER_DEVICE: number of recent images cached per device (default 3)
+   - SAVE_LAST_BMP: when true, saves last rendered BMP to data/<last6>.bmp
    - EARLY_DISPLAY_THRESHOLD: seconds; if /api/display arrives sooner, advance to next screen (default 5)
    - LATE_DISPLAY_THRESHOLD: seconds; if /api/display arrives later, reset to first screen (default 2x DISPLAY_REFRESH_RATE)
 

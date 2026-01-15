@@ -270,6 +270,7 @@ class HARenderer:
             self.refresh_seconds if self.refresh_seconds is not None else 60,
         )
         self.output_format = os.getenv("OUTPUT_FORMAT", "bmp").strip().lower()
+        self.save_last_bmp = os.getenv("SAVE_LAST_BMP", "false").lower() in ("1", "true", "yes", "on")
         self.early_display_threshold = _env_int("EARLY_DISPLAY_THRESHOLD", 5)
         self.late_display_threshold = _env_optional_int("LATE_DISPLAY_THRESHOLD")
         self.output_path = _resolve_path(
@@ -624,7 +625,7 @@ class HARenderer:
             line_height=40,
             start_y=120,
         )
-        png_bytes = cairosvg.svg2png(bytestring=svg.encode("utf-8"))
+        png_bytes = cairosvg.svg2png(bytestring=svg.encode("utf-8"), url=str(template_path))
         if self.output_format == "png":
             return png_bytes
         return _png_to_bmp(png_bytes)
@@ -670,6 +671,10 @@ class HARenderer:
             while len(key_list) > max(1, self.max_cache_per_device):
                 old_key = key_list.pop(0)
                 self.image_cache.pop(old_key, None)
+            if self.save_last_bmp and self.output_format == "bmp":
+                suffix = (normalized or "default")[-6:] or "device"
+                save_path = (self.data_dir / f"{suffix}.bmp").resolve()
+                save_path.write_bytes(png_bytes)
 
     def render_loop(self) -> None:
         if self.refresh_seconds is None:
