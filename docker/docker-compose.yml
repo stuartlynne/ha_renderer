@@ -1,0 +1,32 @@
+services:
+  ha-renderer:
+    build:
+      context: ../python_render
+    container_name: ha-renderer
+    environment:
+      HA_URL: http://homeassistant:8123
+      HA_TOKEN: ${HA_TOKEN}
+      ENTITIES: ${ENTITIES}
+      INSIDE_ENTITY: ${INSIDE_ENTITY}
+      OUTSIDE_ENTITY: ${OUTSIDE_ENTITY}
+      WEATHER_ENTITY: ${WEATHER_ENTITY}
+      WIDTH: 800
+      HEIGHT: 480
+      REFRESH_SECONDS: 60
+      OUTPUT_PATH: /data/trmnl.png
+      TEMPLATE_PATH: /app/templates/trmnl.svg.j2
+      LOG_PATH: /data/log.txt
+      PUBLIC_URL: ${PUBLIC_URL}
+      DEVICE_STATE_PATH: /data/device_state.json
+      MQTT_ENABLE: ${MQTT_ENABLE}
+      MQTT_HOST: ${MQTT_HOST}
+      MQTT_PORT: ${MQTT_PORT}
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+      MQTT_PREFIX: ${MQTT_PREFIX}
+      MQTT_DISCOVERY_PREFIX: ${MQTT_DISCOVERY_PREFIX}
+    volumes:
+      - ./data:/data
+    ports:
+      - "9088:9080"
+    restart: unless-stopped

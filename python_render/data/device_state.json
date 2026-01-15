@@ -1,0 +1,18 @@
+{
+  "accept": "application/json",
+  "accept-encoding": "identity;q=1,chunked;q=0.1,*;q=0",
+  "access-token": "",
+  "battery-voltage": "4.14",
+  "connection": "keep-alive",
+  "content-length": "341",
+  "content-type": "application/json",
+  "fw-version": "1.5.12",
+  "height": "480",
+  "host": "192.168.40.16:9080",
+  "id": "90:70:69:11:17:04",
+  "model": "xiao_epaper_display",
+  "refresh-rate": "0",
+  "rssi": "-82",
+  "user-agent": "ESP32HTTPClient",
+  "width": "800"
+}

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ width }}" height="{{ height }}" viewBox="0 0 {{ width }} {{ height }}">
+  <style>
+    text { font-family: "DejaVu Sans", Arial, sans-serif; fill: #000; }
+    .title { font-size: 30px; font-weight: 700; }
+    .subtitle { font-size: 18px; fill: #333; }
+    .label { font-size: 16px; fill: #333; }
+    .value { font-size: 18px; font-weight: 700; }
+    .note { font-size: 16px; fill: #444; }
+    .muted { fill: #666; }
+    .divider { stroke: #ddd; stroke-width: 2; }
+  </style>
+  <rect x="0" y="0" width="{{ width }}" height="{{ height }}" fill="#fff" />
+
+  <text x="24" y="40" class="title">{{ meta.app_name }}</text>
+  <text x="24" y="68" class="subtitle">{{ now }}</text>
+
+  <line x1="24" y1="88" x2="{{ width - 24 }}" y2="88" class="divider" />
+
+  <text x="24" y="120" class="note">No page setup found for this device.</text>
+  <text x="24" y="148" class="note">Edit the device config file to assign a template:</text>
+  <text x="24" y="176" class="value">{{ meta.config_path }}</text>
+
+  <line x1="24" y1="196" x2="{{ width - 24 }}" y2="196" class="divider" />
+
+  <text x="24" y="226" class="label">Device ID (MAC)</text>
+  <text x="240" y="226" class="value">{{ device.device_id or meta.device_id }}</text>
+
+  <text x="24" y="254" class="label">Firmware</text>
+  <text x="240" y="254" class="value">{{ device.fw_version or "unknown" }}</text>
+
+  <text x="24" y="282" class="label">Battery</text>
+  <text x="240" y="282" class="value">
+    {% if device.battery_voltage is not none %}{{ device.battery_voltage }} V{% else %}unknown{% endif %}
+    {% if device.battery_percent is not none %} ({{ device.battery_percent }}%){% endif %}
+  </text>
+
+  <text x="24" y="310" class="label">WiFi RSSI</text>
+  <text x="240" y="310" class="value">{% if device.rssi is not none %}{{ device.rssi }} dBm{% else %}unknown{% endif %}</text>
+
+  <text x="24" y="338" class="label">Device IP</text>
+  <text x="240" y="338" class="value">{{ device.ip or "unknown" }}</text>
+
+  <text x="24" y="366" class="label">Server URL</text>
+  <text x="240" y="366" class="value">
+    {% if meta.public_url %}{{ meta.public_url }}{% elif meta.host %}http://{{ meta.host }}{% else %}unknown{% endif %}
+  </text>
+
+  <line x1="24" y1="386" x2="{{ width - 24 }}" y2="386" class="divider" />
+
+  <text x="24" y="414" class="note muted">
+    This page appears when no device-specific setup is found.
+  </text>
+</svg>
