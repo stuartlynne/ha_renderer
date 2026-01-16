@@ -1,9 +1,7 @@
 
-version: '3.8'
-
 services:
 
-    qlmux_proxy:
+    ha_renderer:
         image: ${IMAGE}
         privileged: true
         cap_add:
@@ -18,4 +16,6 @@ services:
         volumes:
             - /etc/localtime:/etc/localtime:ro
             - /etc/timezone:/etc/timezone:ro
+            - ./data:/data
+            - ./templates:/templates
 
