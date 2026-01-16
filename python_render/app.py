@@ -1073,14 +1073,25 @@ def make_handler(renderer: HARenderer) -> type[BaseHTTPRequestHandler]:
                 screen_count = renderer._screen_count(device_id)
                 config = renderer._effective_config_for_screen(device_id, screen_index, screen_count)
                 normalized = _normalize_device_id(device_id)
+                rendered_now = False
                 if renderer.refresh_seconds is None:
                     renderer.render_for_device(device_id, config)
+                    rendered_now = True
                 else:
                     image_hash = renderer.last_image_hash.get(normalized or "default", "")
                     cache_key = f"{normalized or 'default'}:{image_hash}" if image_hash else None
                     if not image_hash or (cache_key and cache_key not in renderer.image_cache):
                         renderer.render_for_device(device_id, config)
+                        rendered_now = True
                 image_hash = renderer.last_image_hash.get(normalized or "default", "")
+                if not image_hash:
+                    print(
+                        "[image] display missing hash "
+                        f"device={normalized or 'default'} rendered={rendered_now} "
+                        f"refresh_seconds={renderer.refresh_seconds}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
                 display_refresh = config.get("display_refresh_rate")
                 if display_refresh is None or str(display_refresh).strip() == "":
                     display_refresh = renderer.display_refresh_rate
@@ -1123,7 +1134,7 @@ def make_handler(renderer: HARenderer) -> type[BaseHTTPRequestHandler]:
                     self.end_headers()
                     self.wfile.write(data)
                     return
-                print(f"[image] MISS {self.path}", file=sys.stderr, flush=True)
+                print(f"[image] MISS {self.path} cache=default", file=sys.stderr, flush=True)
                 self.send_error(HTTPStatus.NOT_FOUND, "render not ready")
                 return
 
@@ -1147,7 +1158,11 @@ def make_handler(renderer: HARenderer) -> type[BaseHTTPRequestHandler]:
                         self.end_headers()
                         self.wfile.write(data)
                         return
-                print(f"[image] MISS {self.path}", file=sys.stderr, flush=True)
+                print(
+                    f"[image] MISS {self.path} cache_key={cache_key}",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 self.send_error(HTTPStatus.NOT_FOUND, "render not ready")
                 return
 
