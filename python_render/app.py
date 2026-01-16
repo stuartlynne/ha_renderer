@@ -727,6 +727,7 @@ class HARenderer:
                         save_path = (self.last_bmp_path / f"{suffix}.bmp").resolve()
                 else:
                     save_path = (self.storage_dir / f"{suffix}.bmp").resolve()
+                print(f"[render] saving last BMP to {save_path}", file=sys.stderr, flush=True)
                 save_path.parent.mkdir(parents=True, exist_ok=True)
                 save_path.write_bytes(png_bytes)
 
