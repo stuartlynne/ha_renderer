@@ -21,7 +21,7 @@ from PIL import Image
 import websockets
 from paho.mqtt import client as mqtt
 
-VERSION = "0.10"
+VERSION = "0.11"
 
 
 def _coerce_float(value: str | None) -> float | None:
@@ -116,7 +116,7 @@ def _condition_icon(condition: str | None) -> str:
         return "•"
     mapping = {
         "sunny": "☀",
-        "clear-night": "◐",
+        "clear-night": "☾",
         "partlycloudy": "☁",
         "cloudy": "☁",
         "overcast": "☁",
