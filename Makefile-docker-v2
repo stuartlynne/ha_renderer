@@ -27,6 +27,9 @@ export IMAGE_NAME := $(IMAGE)
 
 # Define the image name.
 IMAGE = $(shell basename $(CURDIR)):private
+COPYTARGET ?= /srv/$(CONTAINER)
+ALLFILES ?=
+FILES ?=
 
 # make the contents of docker.env or $(CONTAINER).env available to docker-compose 
 ENV = $(shell basename $(CURDIR)).env
@@ -36,11 +39,13 @@ HOSTNAME = $(shell hostname)
 -include $(ENV)
 .EXPORT_ALL_VARIABLES:
 
-.PHONY: all build up down clean really-clean bash logs test
+.PHONY: all build up down clean really-clean bash logs test allfiles files config
 
 all:
 	@echo "make build - build $(IMAGE) image"
 	@echo "make up - start $(CONTAINER) container"
+	@echo "make allfiles - initialize host files under $(COPYTARGET)"
+	@echo "make files - initialize host files under $(COPYTARGET)"
 	@echo "make down - stop $(CONTAINER) container"
 	@echo "make clean - remove $(CONTAINER) container"
 	@echo "make really-clean - remove $(CONTAINER) container and $(IMAGE) image"
@@ -55,8 +60,13 @@ test:
 	@echo DOCKERBUILDARGS:$(DOCKERBUILDARGS)
 	@echo CSRF_TRUSTED_ORIGINS:$(CSRF_TRUSTED_ORIGINS)
 	@echo HOSTNAME: $(HOSTNAME)
-	#echo
-	#@env
+	@echo COPYTARGET:$(COPYTARGET)
+	@echo COPYFILES:$(COPYFILES)
+	@echo ENTRY_DIR: $(ENTRY_DIR)
+	@echo DATA_DIR:$(DATA_DIR)
+	@echo
+env:
+	@env
 
 # build the image
 rebuild: really-clean build
@@ -67,12 +77,41 @@ build:
 	echo BUILD
 	if [ -s 'Dockerfile' ]; then docker build ${DOCKERBUILDARGS} --tag $(IMAGE) .;  fi
 
+# copy initial host files to COPYTARGET if they do not exist
+allfiles:
+	@if [ -n "$(ALLFILES)" ]; then \
+		mkdir -p "$(COPYTARGET)"; \
+		for src in $(ALLFILES); do \
+			if [ -e "$$src" ]; then \
+				dest="$(COPYTARGET)/$$src"; \
+				mkdir -p "$$(dirname "$$dest")"; \
+				if [ ! -e "$$dest" ]; then cp -va "$$src" "$$dest"; fi; \
+			fi; \
+		done; \
+	fi
+
+# copy initial host files to COPYTARGET if they do not exist
+files:
+	@if [ -n "$(FILES)" ]; then \
+		mkdir -p "$(COPYTARGET)"; \
+		for src in $(FILES); do \
+			if [ -e "$$src" ]; then \
+				dest="$(COPYTARGET)/$$src"; \
+				mkdir -p "$$(dirname "$$dest")"; \
+				if [ "$$src" -nt "$$dest" ]; then cp -va "$$src" "$$dest"; fi; \
+			fi; \
+		done; \
+	fi
+
 
 # start the container
-up: build
+config:
+	docker compose config
+
+up: allfiles files #build
 	docker compose up -d
 
-upw: build
+upw:allfiles files build
 	docker compose up
 
 # stop the container
@@ -100,4 +139,3 @@ logs:
 commit:
 	docker commit $(IMAGE) 
 	docker save -o $(IMAGE).tar $(IMAGE)
-

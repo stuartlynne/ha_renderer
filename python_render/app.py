@@ -20,6 +20,8 @@ from PIL import Image
 import websockets
 from paho.mqtt import client as mqtt
 
+VERSION = "0.10"
+
 
 def _coerce_float(value: str | None) -> float | None:
     if value is None:
@@ -362,6 +364,7 @@ class HARenderer:
             file=sys.stderr,
             flush=True,
         )
+        print(f"[version] {VERSION}", file=sys.stderr, flush=True)
         self._load_device_state()
         self._load_device_config()
 

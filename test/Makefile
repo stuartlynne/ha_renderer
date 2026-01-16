@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-ENV_FILE := docker.env
+ENV_FILE := ha_renderer.env
 TEMPLATE_SRC := ../python_render/templates/trmnl.svg.j2
 TEMPLATE_DST := templates/trmnl.svg.j2 templates/trmnl_default.svg.j2 templates/trmnl_forecast.svg.j2
 FONT_DST := fonts/TGL_0-1451Eng.ttf

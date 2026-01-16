@@ -11,10 +11,12 @@ services:
         hostname: ${HOSTNAME}
         restart: always
         network_mode: host
+        #entrypoint: ["/ha_renderer.sh"]
         environment:
             PYTHONUNBUFFERED: 1
         volumes:
             - /etc/localtime:/etc/localtime:ro
             - /etc/timezone:/etc/timezone:ro
-            - ${DATA_DIR:-/srv/${CONTAINER}/data}:/data
-            - ${TEMPLATES_DIR:-/srv/${CONTAINER}/templates}:/templates
+            - ${ENTRY_DIR}:/entry
+            - ${DATA_DIR}:/data
+            - ${TEMPLATES_DIR}:/templates
