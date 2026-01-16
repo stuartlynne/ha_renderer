@@ -1072,9 +1072,14 @@ def make_handler(renderer: HARenderer) -> type[BaseHTTPRequestHandler]:
                 screen_index = renderer._next_screen_index(device_id)
                 screen_count = renderer._screen_count(device_id)
                 config = renderer._effective_config_for_screen(device_id, screen_index, screen_count)
+                normalized = _normalize_device_id(device_id)
                 if renderer.refresh_seconds is None:
                     renderer.render_for_device(device_id, config)
-                normalized = _normalize_device_id(device_id)
+                else:
+                    image_hash = renderer.last_image_hash.get(normalized or "default", "")
+                    cache_key = f"{normalized or 'default'}:{image_hash}" if image_hash else None
+                    if not image_hash or (cache_key and cache_key not in renderer.image_cache):
+                        renderer.render_for_device(device_id, config)
                 image_hash = renderer.last_image_hash.get(normalized or "default", "")
                 display_refresh = config.get("display_refresh_rate")
                 if display_refresh is None or str(display_refresh).strip() == "":
