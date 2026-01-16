@@ -145,7 +145,7 @@ def _format_temp_pair(temp: float | int | None, unit: str | None, sep: str = "/"
         c = round((value - 32) * 5 / 9)
     else:
         return {"c": f"{round(value)}°", "f": ""}
-    return {"c": f"{c}C", "f": f"{f}F"}
+    return {"c": f"{c}°", "f": f"{f}F"}
 
 
 def _normalize_temp_unit(value: str | None, fallback: str | None = None) -> str:
@@ -214,6 +214,17 @@ def _resolve_path(value: str | None, default: Path, use_cwd_if_relative: bool = 
             return (Path.cwd() / candidate).resolve()
         return candidate
     return default
+
+
+def _resolve_optional_path(value: str | None, use_cwd_if_relative: bool = False) -> Path | None:
+    if not value:
+        return None
+    candidate = Path(value)
+    if candidate.is_absolute():
+        return candidate
+    if use_cwd_if_relative:
+        return (Path.cwd() / candidate).resolve()
+    return candidate
 
 
 def _png_to_bmp(png_bytes: bytes) -> bytes:
@@ -307,6 +318,12 @@ class HARenderer:
         self.device_config_path = _resolve_path(
             raw_device_config,
             self.data_dir / "devices.json",
+            use_cwd_if_relative=True,
+        )
+        # Keep any extra artifacts alongside the device config/logs by default.
+        self.storage_dir = self.device_config_path.parent
+        self.last_bmp_path = _resolve_optional_path(
+            os.getenv("SAVE_LAST_BMP_PATH", "").strip(),
             use_cwd_if_relative=True,
         )
         self.mqtt_enabled = os.getenv("MQTT_ENABLE", "false").lower() in ("1", "true", "yes", "on")
@@ -673,7 +690,18 @@ class HARenderer:
                 self.image_cache.pop(old_key, None)
             if self.save_last_bmp and self.output_format == "bmp":
                 suffix = (normalized or "default")[-6:] or "device"
-                save_path = (self.data_dir / f"{suffix}.bmp").resolve()
+                if self.last_bmp_path:
+                    if "{device_id}" in str(self.last_bmp_path):
+                        save_path = Path(
+                            str(self.last_bmp_path).format(device_id=normalized or "default")
+                        ).resolve()
+                    elif self.last_bmp_path.suffix.lower() == ".bmp":
+                        save_path = self.last_bmp_path.resolve()
+                    else:
+                        save_path = (self.last_bmp_path / f"{suffix}.bmp").resolve()
+                else:
+                    save_path = (self.storage_dir / f"{suffix}.bmp").resolve()
+                save_path.parent.mkdir(parents=True, exist_ok=True)
                 save_path.write_bytes(png_bytes)
 
     def render_loop(self) -> None:

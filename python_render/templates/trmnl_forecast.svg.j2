@@ -13,7 +13,7 @@
     .mid { fill: #000; font-weight: 700; }
     .bar { font-weight: 400; }
     .divider { stroke: #aaa; stroke-width: 3; }
-    .icon { font-size: 31px; }
+    .icon { font-size: 37px; }
     .small { font-size: 19px; }
     .tiny { font-size: 17px; }
     .tiny-top { font-size: 20px; }
@@ -62,7 +62,7 @@
     {% set slot = (width - 40) / hourly_count %}
     {% for item in forecast_hourly %}
       {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
-      <text x="{{ x }}" y="154" text-anchor="middle" class="small">{{ item.label or "" }}</text>
+      <text x="{{ x }}" y="144" text-anchor="middle" class="small">{{ item.label or "" }}</text>
       <text x="{{ x }}" y="178" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
       <text x="{{ x + 2 }}" y="216" text-anchor="end" class="label mid temp tall">
         {{ item.temperature.c }}
@@ -83,7 +83,7 @@
     {% set slot = (width - 40) / daily_count %}
     {% for item in forecast_daily %}
       {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
-      <text x="{{ x }}" y="276" text-anchor="middle" class="day">{{ item.label or "" }}</text>
+      <text x="{{ x }}" y="272" text-anchor="middle" class="day">{{ item.label or "" }}</text>
       <text x="{{ x }}" y="310" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
       <text x="{{ x + 2 }}" y="320" text-anchor="end" class="label mid temp tall">
         {{ item.temperature.c }}

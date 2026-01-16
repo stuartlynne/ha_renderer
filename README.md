@@ -33,6 +33,10 @@ Local Home Assistant data-to-PNG renderer intended for TRMNL BYOS.
    - REFRESH_SECONDS: when set, renderer pre-renders on a loop; when empty, render on /api/display
    - MAX_CACHE_PER_DEVICE: number of recent images cached per device (default 3)
    - SAVE_LAST_BMP: when true, saves last rendered BMP to data/<last6>.bmp
+   - SAVE_LAST_BMP_PATH: optional override for SAVE_LAST_BMP output. If set to a directory, the
+     file is saved as <last6>.bmp. If set to a .bmp file, it is overwritten. Supports
+     `{device_id}` placeholder (e.g., `./data/{device_id}.bmp`). Defaults to the directory
+     containing DEVICE_CONFIG_PATH.
    - EARLY_DISPLAY_THRESHOLD: seconds; if /api/display arrives sooner, advance to next screen (default 5)
    - LATE_DISPLAY_THRESHOLD: seconds; if /api/display arrives later, reset to first screen (default 2x DISPLAY_REFRESH_RATE)
 
