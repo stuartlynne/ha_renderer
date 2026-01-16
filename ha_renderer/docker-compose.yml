@@ -16,6 +16,5 @@ services:
         volumes:
             - /etc/localtime:/etc/localtime:ro
             - /etc/timezone:/etc/timezone:ro
-            - ./data:/data
-            - ./templates:/templates
-
+            - ${DATA_DIR:-/srv/${CONTAINER}/data}:/data
+            - ${TEMPLATES_DIR:-/srv/${CONTAINER}/templates}:/templates
