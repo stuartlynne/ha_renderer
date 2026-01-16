@@ -95,11 +95,7 @@ files:
 	@if [ -n "$(FILES)" ]; then \
 		mkdir -p "$(COPYTARGET)"; \
 		for src in $(FILES); do \
-			if [ -e "$$src" ]; then \
-				dest="$(COPYTARGET)/$$src"; \
-				mkdir -p "$$(dirname "$$dest")"; \
-				if [ "$$src" -nt "$$dest" ]; then cp -va "$$src" "$$dest"; fi; \
-			fi; \
+			cp -va "$$src" "$(COPYTARGET)/$$src"; \
 		done; \
 	fi
 
