@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -241,6 +242,16 @@ def _content_type(fmt: str) -> str:
     return "image/png"
 
 
+def _copy_templates_if_missing(target_dir: Path, source_dir: Path) -> None:
+    if not source_dir.exists():
+        return
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for template in source_dir.glob("*.j2"):
+        destination = target_dir / template.name
+        if not destination.exists():
+            shutil.copy2(template, destination)
+
+
 def _env_int(name: str, default: int) -> int:
     value = os.getenv(name, str(default)).strip()
     if value == "":
@@ -326,6 +337,7 @@ class HARenderer:
             os.getenv("SAVE_LAST_BMP_PATH", "").strip(),
             use_cwd_if_relative=True,
         )
+        self._bootstrap_storage()
         self.mqtt_enabled = os.getenv("MQTT_ENABLE", "false").lower() in ("1", "true", "yes", "on")
         self.mqtt_host = os.getenv("MQTT_HOST", "mosquitto")
         self.mqtt_port = _env_int("MQTT_PORT", 1883)
@@ -362,6 +374,20 @@ class HARenderer:
                 self.device_state.update({str(k): str(v) for k, v in data.items()})
         except (OSError, json.JSONDecodeError):
             return
+
+    def _bootstrap_storage(self) -> None:
+        try:
+            self.device_config_path.parent.mkdir(parents=True, exist_ok=True)
+            if not self.device_config_path.exists():
+                self.device_config_path.write_text("{}", encoding="utf-8")
+        except OSError as exc:
+            print(f"[config] unable to initialize {self.device_config_path}: {exc}", file=sys.stderr)
+
+        try:
+            template_dir = self.template_path.parent
+            _copy_templates_if_missing(template_dir, self.base_dir / "templates")
+        except OSError as exc:
+            print(f"[config] unable to populate templates: {exc}", file=sys.stderr)
 
     def _load_device_config(self) -> None:
         self.device_config = {}
