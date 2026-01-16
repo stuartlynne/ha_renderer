@@ -12,6 +12,7 @@ from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import unicodedata
 
 import cairosvg
 import requests
@@ -115,7 +116,7 @@ def _condition_icon(condition: str | None) -> str:
         return "•"
     mapping = {
         "sunny": "☀",
-        "clear-night": "☾",
+        "clear-night": "◐",
         "partlycloudy": "☁",
         "cloudy": "☁",
         "overcast": "☁",
@@ -252,6 +253,17 @@ def _copy_templates_if_missing(target_dir: Path, source_dir: Path) -> None:
         destination = target_dir / template.name
         if not destination.exists():
             shutil.copy2(template, destination)
+
+
+def _describe_icon(value: str | None) -> str:
+    if not value:
+        return "empty"
+    parts = []
+    for char in value:
+        codepoint = f"U+{ord(char):04X}"
+        name = unicodedata.name(char, "UNKNOWN")
+        parts.append(f"{codepoint}:{name}")
+    return ",".join(parts)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -613,26 +625,46 @@ class HARenderer:
 
         hourly_items = []
         for item in forecast_hourly[: self.forecast_hourly_limit]:
+            icon = _condition_icon(item.get("condition"))
             hourly_items.append(
                 {
                     "label": _format_hour_label(item.get("datetime")),
                     "temperature": _format_temp_pair(item.get("temperature"), temp_unit),
                     "condition": item.get("condition"),
-                    "icon": _condition_icon(item.get("condition")),
+                    "icon": icon,
                 }
             )
+            if os.getenv("DEBUG_ICONS", "").strip():
+                print(
+                    "[icon] hourly "
+                    f"label={_format_hour_label(item.get('datetime'))!r} "
+                    f"condition={item.get('condition')!r} icon={icon!r} "
+                    f"glyphs={_describe_icon(icon)}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
         daily_items = []
         for item in forecast_daily[: self.forecast_daily_limit]:
+            icon = _condition_icon(item.get("condition"))
             daily_items.append(
                 {
                     "label": _format_day_label(item.get("datetime")),
                     "temperature": _format_temp_pair(item.get("temperature"), temp_unit),
                     "templow": _format_temp_pair(item.get("templow"), temp_unit),
                     "condition": item.get("condition"),
-                    "icon": _condition_icon(item.get("condition")),
+                    "icon": icon,
                 }
             )
+            if os.getenv("DEBUG_ICONS", "").strip():
+                print(
+                    "[icon] daily "
+                    f"label={_format_day_label(item.get('datetime'))!r} "
+                    f"condition={item.get('condition')!r} icon={icon!r} "
+                    f"glyphs={_describe_icon(icon)}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
         temp_value = attrs.get("temperature")
         if temp_value is None and forecast_daily:
