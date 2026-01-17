@@ -34,6 +34,7 @@ FILES ?=
 # make the contents of docker.env or $(CONTAINER).env available to docker-compose 
 ENV = $(shell basename $(CURDIR)).env
 HOSTNAME = $(shell hostname)
+PUBLICIP = $(shell ip route get 1 | awk '{print $$7;}';exit)
 
 -include docker.env
 -include $(ENV)
@@ -60,6 +61,7 @@ test:
 	@echo DOCKERBUILDARGS:$(DOCKERBUILDARGS)
 	@echo CSRF_TRUSTED_ORIGINS:$(CSRF_TRUSTED_ORIGINS)
 	@echo HOSTNAME: $(HOSTNAME)
+	@echo PUBLICIP: $(PUBLICIP)
 	@echo COPYTARGET:$(COPYTARGET)
 	@echo COPYFILES:$(COPYFILES)
 	@echo ENTRY_DIR: $(ENTRY_DIR)

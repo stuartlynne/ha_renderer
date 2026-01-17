@@ -6,7 +6,7 @@ TEMPLATE_DST := templates/trmnl.svg.j2 templates/trmnl_default.svg.j2 templates/
 FONT_DST := fonts/TGL_0-1451Eng.ttf
 DIRS_NEEDED := data templates fonts
 
-.PHONY: all clean ha-states ha-weather-list ha-weather ha-forecast ha-ws-forecast ha-outside
+.PHONY: all clean ha-states ha-weather-list ha-weather ha-forecast ha-ws-forecast ha-outside ha-outside-history
 
 all: $(DIRS_NEEDED) $(TEMPLATE_DST) $(FONT_DST)
 	@set -a; source $(ENV_FILE); set +a; python ../python_render/app.py 2>&1 | tee stderr.txt
@@ -69,3 +69,11 @@ ha-outside:
 	if [[ -z "$$HA_TOKEN" ]]; then echo "HA_TOKEN is empty"; exit 1; fi; \
 	if [[ -z "$$OUTSIDE_ENTITY" ]]; then echo "OUTSIDE_ENTITY is empty"; exit 1; fi; \
 	curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/states/$$OUTSIDE_ENTITY" | json_pp
+
+ha-outside-history:
+	@set -a; source $(ENV_FILE); set +a; \
+	if [[ -z "$$HA_TOKEN" ]]; then echo "HA_TOKEN is empty"; exit 1; fi; \
+	if [[ -z "$$OUTSIDE_ENTITY" ]]; then echo "OUTSIDE_ENTITY is empty"; exit 1; fi; \
+	start_time=$$(date -u -d '3 days ago' +%Y-%m-%dT%H:%M:%SZ); \
+	end_time=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+	curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/history/period/$$start_time?filter_entity_id=$$OUTSIDE_ENTITY&end_time=$$end_time" | json_pp

@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 import asyncio
-from datetime import datetime
+from datetime import datetime, time as dt_time, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -111,6 +111,17 @@ def _format_day_label(dt: str | None) -> str:
     return parsed.strftime("%a")
 
 
+def _coerce_float_value(value: str | float | int | None) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (float, int)):
+        return float(value)
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def _condition_icon(condition: str | None) -> str:
     if not condition:
         return "•"
@@ -131,6 +142,128 @@ def _condition_icon(condition: str | None) -> str:
         "lightning-rainy": "⚡",
     }
     return mapping.get(condition, "•")
+
+
+def _convert_temp(value: float, from_unit: str | None, to_unit: str | None) -> float:
+    if not from_unit or not to_unit or from_unit == to_unit:
+        return value
+    from_unit = from_unit.lower().replace("°", "")
+    to_unit = to_unit.lower().replace("°", "")
+    if from_unit == "c" and to_unit == "f":
+        return (value * 9 / 5) + 32
+    if from_unit == "f" and to_unit == "c":
+        return (value - 32) * 5 / 9
+    return value
+
+
+def _build_graph_series(
+    now: datetime,
+    history_days: int,
+    forecast_days: int,
+    history: list[dict],
+    forecast_hourly: list[dict],
+    forecast_daily: list[dict],
+    width: int,
+    height: int,
+    desired_unit: str | None,
+) -> tuple[list[dict], list[dict], list[dict], list[dict], list[float], float | None, float | None]:
+    graph_left = 40
+    graph_right = width - 40
+    graph_top = 135
+    graph_bottom = height - 90
+    start_day = (now - timedelta(days=history_days)).date()
+    total_days = history_days + forecast_days + 1
+    start = datetime.combine(start_day, dt_time(0, 0), tzinfo=now.tzinfo)
+    end = start + timedelta(days=total_days)
+    span = (end - start).total_seconds()
+    if span <= 0:
+        return [], [], [], [], [], None, None
+
+    def x_for(ts: datetime) -> float:
+        ratio = (ts - start).total_seconds() / span
+        ratio = min(max(ratio, 0.0), 1.0)
+        return graph_left + ratio * (graph_right - graph_left)
+
+    day_ticks = []
+    day_lines = []
+    for i in range(total_days):
+        day = start_day + timedelta(days=i)
+        midnight_dt = datetime.combine(day, dt_time(0, 0), tzinfo=now.tzinfo)
+        day_lines.append(x_for(midnight_dt))
+        tick_dt = datetime.combine(day, dt_time(12, 0), tzinfo=now.tzinfo)
+        day_ticks.append({"x": x_for(tick_dt), "label": tick_dt.strftime("%a")})
+    day_lines.append(x_for(end))
+
+    history_points = []
+    temps = []
+    for entry in history:
+        dt = _parse_iso(entry.get("last_updated")) or _parse_iso(entry.get("last_changed"))
+        value = _coerce_float_value(entry.get("state"))
+        if dt is None or value is None:
+            continue
+        unit = _normalize_temp_unit(entry.get("attributes", {}).get("unit_of_measurement"))
+        value = _convert_temp(value, unit, desired_unit)
+        history_points.append({"ts": dt, "value": value})
+        temps.append(value)
+
+    end_today = now.replace(hour=23, minute=59, second=59, microsecond=0)
+    forecast_high = []
+    forecast_low = []
+    for item in forecast_hourly:
+        dt = _parse_iso(item.get("datetime"))
+        if dt is None or dt > end_today or dt > end:
+            continue
+        temp = _coerce_float_value(item.get("temperature"))
+        if temp is None:
+            continue
+        temp = _convert_temp(temp, desired_unit, desired_unit)
+        forecast_high.append({"ts": dt, "value": temp})
+        forecast_low.append({"ts": dt, "value": temp})
+        temps.append(temp)
+
+    for item in forecast_daily:
+        dt = _parse_iso(item.get("datetime"))
+        if dt is None or dt <= end_today or dt > end:
+            continue
+        high = _coerce_float_value(item.get("temperature"))
+        low = _coerce_float_value(item.get("templow"))
+        if high is not None:
+            high = _convert_temp(high, desired_unit, desired_unit)
+            forecast_high.append({"ts": dt, "value": high})
+            temps.append(high)
+        if low is not None:
+            low = _convert_temp(low, desired_unit, desired_unit)
+            forecast_low.append({"ts": dt, "value": low})
+            temps.append(low)
+
+    if not temps:
+        return [], [], [], day_ticks, day_lines, None, None
+    min_temp = min(temps)
+    max_temp = max(temps)
+    if min_temp == max_temp:
+        min_temp -= 1
+        max_temp += 1
+    pad = max(1.0, (max_temp - min_temp) * 0.1)
+    min_temp -= pad
+    max_temp += pad
+
+    def y_for(value: float) -> float:
+        ratio = (value - min_temp) / (max_temp - min_temp)
+        ratio = min(max(ratio, 0.0), 1.0)
+        return graph_bottom - ratio * (graph_bottom - graph_top)
+
+    history_points_xy = [{"x": x_for(p["ts"]), "y": y_for(p["value"])} for p in history_points]
+    forecast_high_xy = [{"x": x_for(p["ts"]), "y": y_for(p["value"])} for p in forecast_high]
+    forecast_low_xy = [{"x": x_for(p["ts"]), "y": y_for(p["value"])} for p in forecast_low]
+    return (
+        history_points_xy,
+        forecast_high_xy,
+        forecast_low_xy,
+        day_ticks,
+        day_lines,
+        round(min_temp, 1),
+        round(max_temp, 1),
+    )
 
 
 def _format_temp_pair(temp: float | int | None, unit: str | None, sep: str = "/") -> dict:
@@ -233,7 +366,8 @@ def _resolve_optional_path(value: str | None, use_cwd_if_relative: bool = False)
 
 def _png_to_bmp(png_bytes: bytes) -> bytes:
     with Image.open(io.BytesIO(png_bytes)) as image:
-        image = image.convert("1")
+        # Avoid dithered 1-bit output; use a hard threshold for crisp lines.
+        image = image.convert("L").point(lambda p: 255 if p > 128 else 0, mode="1")
         output = io.BytesIO()
         image.save(output, format="BMP")
         return output.getvalue()
@@ -327,6 +461,11 @@ class HARenderer:
         self.forecast_type = os.getenv("FORECAST_TYPE", "daily").strip().lower()
         self.forecast_hourly_limit = _env_int("FORECAST_HOURLY_LIMIT", 8)
         self.forecast_daily_limit = _env_int("FORECAST_DAILY_LIMIT", 6)
+        self.history_days = _env_int("HISTORY_DAYS", 3)
+        self.forecast_days = _env_int("FORECAST_DAYS", 3)
+        self.render_all_devices_on_refresh = os.getenv(
+            "RENDER_ALL_DEVICES_ON_REFRESH", "false"
+        ).lower() in ("1", "true", "yes", "on")
         self.forecast_mode = os.getenv("FORECAST_MODE", "websocket").strip().lower()
         self.public_url = os.getenv("PUBLIC_URL", "").rstrip("/")
         self.log_path = _resolve_path(
@@ -495,6 +634,30 @@ class HARenderer:
                         if forecast_hourly is not None:
                             attrs["forecast_hourly"] = forecast_hourly
         return results
+
+    def _fetch_history(self, entity_id: str, days: int) -> list[dict]:
+        if not self.ha_token:
+            raise RuntimeError("HA_TOKEN is not set")
+        if days <= 0:
+            return []
+        end_time = datetime.now().astimezone()
+        start_time = end_time - timedelta(days=days)
+        start_iso = start_time.astimezone().isoformat()
+        end_iso = end_time.astimezone().isoformat()
+        headers = {"Authorization": f"Bearer {self.ha_token}"}
+        url = (
+            f"{self.ha_url}/api/history/period/{start_iso}"
+            f"?filter_entity_id={entity_id}&end_time={end_iso}"
+        )
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        payload = response.json()
+        if isinstance(payload, list) and payload:
+            if isinstance(payload[0], list):
+                return payload[0]
+            if isinstance(payload[0], dict):
+                return payload
+        return []
 
     def _fetch_forecast_websocket(self, forecast_type: str) -> list[dict] | None:
         if self.forecast_mode != "websocket":
@@ -683,6 +846,38 @@ class HARenderer:
         }
         current["temp_pair"] = _format_temp_pair(current.get("temperature"), temp_unit)
 
+        history_points = []
+        forecast_high_points = []
+        forecast_low_points = []
+        day_ticks = []
+        day_lines = []
+        graph_min = None
+        graph_max = None
+        if config.get("outside_entity") and self.history_days > 0:
+            try:
+                history = self._fetch_history(config.get("outside_entity"), self.history_days)
+                (
+                    history_points,
+                    forecast_high_points,
+                    forecast_low_points,
+                    day_ticks,
+                    day_lines,
+                    graph_min,
+                    graph_max,
+                ) = _build_graph_series(
+                    now=datetime.now().astimezone(),
+                    history_days=self.history_days,
+                    forecast_days=self.forecast_days,
+                    history=history,
+                    forecast_hourly=forecast_hourly,
+                    forecast_daily=forecast_daily,
+                    width=self.width,
+                    height=self.height,
+                    desired_unit=_normalize_temp_unit(temp_unit),
+                )
+            except Exception as exc:  # noqa: BLE001
+                self.last_error = f"history: {exc}"
+
         svg = template.render(
             width=self.width,
             height=self.height,
@@ -697,6 +892,13 @@ class HARenderer:
             forecast_hourly=hourly_items,
             forecast_daily=daily_items,
             current_weather=current,
+            history_points=history_points,
+            forecast_high_points=forecast_high_points,
+            forecast_low_points=forecast_low_points,
+            day_ticks=day_ticks,
+            day_lines=day_lines,
+            graph_min=graph_min,
+            graph_max=graph_max,
             device=device,
             meta=config.get("meta", {}),
             last_error=self.last_error,
@@ -710,6 +912,14 @@ class HARenderer:
 
     def render_once(self) -> None:
         self.render_for_device(None, self._effective_config_for_screen(None, 0, 1))
+
+    def render_all_devices(self) -> None:
+        self._load_device_config()
+        device_ids = sorted(self.device_config.keys())
+        for device_id in device_ids:
+            screen_count = self._screen_count(device_id)
+            config = self._effective_config_for_screen(device_id, 0, screen_count)
+            self.render_for_device(device_id, config)
 
     def render_for_device(self, device_id: str | None, config: dict) -> None:
         with self.lock:
@@ -771,6 +981,8 @@ class HARenderer:
             return
         while True:
             self.render_once()
+            if self.render_all_devices_on_refresh:
+                self.render_all_devices()
             time.sleep(self.refresh_seconds)
 
     def _log_entity_snapshot(self, entities: list[dict]) -> None:
