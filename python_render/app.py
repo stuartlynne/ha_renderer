@@ -13,6 +13,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import unicodedata
+import urllib.parse
 
 import cairosvg
 import requests
@@ -831,7 +832,11 @@ class HARenderer:
             forecast = weather["attributes"].get("forecast", [])[:5]
             temp_unit = weather["attributes"].get("temperature_unit", "")
 
-        device = _derive_device_state(self.device_state)
+        meta = config.get("meta", {})
+        if meta.get("hide_device_state"):
+            device = {}
+        else:
+            device = _derive_device_state(self.device_state)
 
         attrs = weather.get("attributes", {}) if weather else {}
         forecast_daily = attrs.get("forecast_daily", [])
@@ -953,7 +958,7 @@ class HARenderer:
             graph_min=graph_min,
             graph_max=graph_max,
             device=device,
-            meta=config.get("meta", {}),
+            meta=meta,
             last_error=self.last_error,
             line_height=40,
             start_y=120,
@@ -1519,6 +1524,65 @@ def make_handler(renderer: HARenderer) -> type[BaseHTTPRequestHandler]:
             if self.path == "/render":
                 renderer.render_once()
                 self._send_json({"status": "rendered"})
+                return
+
+            if self.path.split("?", 1)[0] == "/view":
+                params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                device_id = None
+                if "device" in params:
+                    device_id = params["device"][0]
+                if device_id is None:
+                    device_id = _derive_device_state(renderer.device_state).get("device_id")
+                if device_id is None:
+                    device_id = "default"
+                screen_index = 1
+                if "screen" in params:
+                    try:
+                        screen_index = int(params["screen"][0])
+                    except ValueError:
+                        screen_index = 0
+                refresh = params.get("refresh", [str(renderer.display_refresh_rate)])[0]
+                normalized = _normalize_device_id(device_id)
+                if normalized:
+                    screen_count = renderer._screen_count(device_id)
+                    config = renderer._effective_config_for_screen(
+                        device_id, screen_index, screen_count
+                    )
+                    config = dict(config)
+                    config_meta = dict(config.get("meta", {}))
+                    config_meta["hide_device_state"] = True
+                    config["meta"] = config_meta
+                    renderer.render_for_device(device_id, config)
+                image_hash = ""
+                if normalized:
+                    image_hash = renderer.last_image_hash.get(normalized, "")
+                image_url = "/trmnl.bmp"
+                if normalized and image_hash:
+                    image_url = f"/image/{normalized}/{image_hash}.{renderer.output_format}"
+                html = f"""<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="{refresh}" />
+    <title>TRMNL View</title>
+    <style>
+      html, body {{ margin: 0; padding: 0; background: #fff; height: 100%; }}
+      body {{ display: flex; align-items: center; justify-content: center; }}
+      img {{ max-width: 100%; max-height: 100%; image-rendering: pixelated; }}
+    </style>
+  </head>
+  <body>
+    <img src="{image_url}" alt="TRMNL" />
+  </body>
+</html>
+"""
+                data = html.encode("utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
                 return
 
             self.send_error(HTTPStatus.NOT_FOUND, "not found")

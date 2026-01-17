@@ -37,7 +37,7 @@
   {% set parts = condition.split("-") %}
   <text x="20" y="56" class="title">{{ parts[0] }}</text>
   {% if parts|length > 1 %}
-    <text x="20" y="126" class="title">{{ parts[1] }}</text>
+    <text x="20" y="136" class="title">{{ parts[1] }}</text>
   {% endif %}
   {% if current_weather.icon %}
     <text x="375" y="151" class="icon-big">{{ current_weather.icon }}</text>
@@ -121,10 +121,11 @@
   <text x="{{ width - 330 }}" y="{{ height - 2 }}" class="small muted">
     {% if current_weather.wind_speed is not none %}{{ current_weather.wind_speed }}kmh{% else %}--{% endif %}
   </text>
+  {% if device.get("rssi") is not none or device.get("battery_percent") is not none or device.get("battery_level") or device.get("battery_voltage") is not none %}
   <!-- Battery icon -->
   <rect x="{{ width - 55 }}" y="{{ height - 16 }}" width="48" height="14" rx="3" ry="3" fill="none" stroke="#333" stroke-width="2" />
   <rect x="{{ width - 5 }}" y="{{ height - 13 }}" width="5" height="8" rx="2" ry="2" fill="#333" />
-  {% set level = device.battery_level %}
+  {% set level = device.get("battery_level") %}
   {% if level %}
     {% set bars = 0 %}
     {% if level == "full" %}
@@ -141,7 +142,7 @@
     {% endfor %}
   {% endif %}
 
-  {% set rssi = device.rssi %}
+  {% set rssi = device.get("rssi") %}
   {% set wifi_bars = 0 %}
   {% if rssi is not none %}
     {% if rssi >= -50 %}
@@ -161,17 +162,20 @@
   {% if rssi is not none %}
     <text x="{{ wifi_x - 38 }}" y="{{ height - 2 }}" class="small muted">{{ "%.0f" % rssi }}</text>
   {% endif %}
-  {% for i in range(4) %}
-    {% set bar_h = 4 + (i * 3) %}
-    {% set bar_y = wifi_y + (12 - bar_h) %}
-    {% if i < wifi_bars %}
-      <rect x="{{ wifi_x + (i * 8) }}" y="{{ bar_y }}" width="6" height="{{ bar_h }}" fill="#333" />
-    {% else %}
-      <rect x="{{ wifi_x + (i * 8) }}" y="{{ bar_y }}" width="6" height="{{ bar_h }}" fill="none" stroke="#333" stroke-width="1" />
-    {% endif %}
-  {% endfor %}
-  {% if device.battery_percent is not none %}
-    <text x="{{ wifi_x + 40 }}" y="{{ height - 2 }}" class="small muted">{{ device.battery_percent }}%</text>
+  {% if rssi is not none %}
+    {% for i in range(4) %}
+      {% set bar_h = 4 + (i * 3) %}
+      {% set bar_y = wifi_y + (12 - bar_h) %}
+      {% if i < wifi_bars %}
+        <rect x="{{ wifi_x + (i * 8) }}" y="{{ bar_y }}" width="6" height="{{ bar_h }}" fill="#333" />
+      {% else %}
+        <rect x="{{ wifi_x + (i * 8) }}" y="{{ bar_y }}" width="6" height="{{ bar_h }}" fill="none" stroke="#333" stroke-width="1" />
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {% if device.get("battery_percent") is not none %}
+    <text x="{{ wifi_x + 40 }}" y="{{ height - 2 }}" class="small muted">{{ device.get("battery_percent") }}%</text>
+  {% endif %}
   {% endif %}
 
   {% if last_error %}
