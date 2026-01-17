@@ -9,7 +9,7 @@ DIRS_NEEDED := data templates fonts
 .PHONY: all clean ha-states ha-weather-list ha-weather ha-forecast ha-ws-forecast ha-outside ha-outside-history
 
 all: $(DIRS_NEEDED) $(TEMPLATE_DST) $(FONT_DST)
-	@set -a; source $(ENV_FILE); set +a; python ../python_render/app.py 2>&1 | tee stderr.txt
+	set -a; source $(ENV_FILE); set +a; python ../python_render/app.py 2>&1 | tee stderr.txt
 
 $(DIRS_NEEDED):
 	mkdir -p $@

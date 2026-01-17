@@ -21,7 +21,7 @@ from PIL import Image
 import websockets
 from paho.mqtt import client as mqtt
 
-VERSION = "0.11"
+VERSION = "0.1"
 
 
 def _coerce_float(value: str | None) -> float | None:
@@ -125,10 +125,12 @@ def _coerce_float_value(value: str | float | int | None) -> float | None:
 def _condition_icon(condition: str | None) -> str:
     if not condition:
         return "•"
+    key = condition.strip().lower().replace("_", "-")
     mapping = {
         "sunny": "☀",
         "clear-night": "☾",
         "partlycloudy": "☁",
+        "partly-cloudy": "☁",
         "cloudy": "☁",
         "overcast": "☁",
         "rainy": "☂",
@@ -141,7 +143,16 @@ def _condition_icon(condition: str | None) -> str:
         "lightning": "⚡",
         "lightning-rainy": "⚡",
     }
-    return mapping.get(condition, "•")
+    if key in mapping:
+        return mapping[key]
+    key_no_hyphen = key.replace("-", "")
+    if key_no_hyphen in mapping:
+        return mapping[key_no_hyphen]
+    if "-" in key:
+        first = key.split("-", 1)[0]
+        if first in mapping:
+            return mapping[first]
+    return "•"
 
 
 def _convert_temp(value: float, from_unit: str | None, to_unit: str | None) -> float:
@@ -189,13 +200,14 @@ def _build_graph_series(
     for i in range(total_days):
         day = start_day + timedelta(days=i)
         midnight_dt = datetime.combine(day, dt_time(0, 0), tzinfo=now.tzinfo)
-        day_lines.append(x_for(midnight_dt))
+        day_lines.append(round(x_for(midnight_dt)))
         tick_dt = datetime.combine(day, dt_time(12, 0), tzinfo=now.tzinfo)
-        day_ticks.append({"x": x_for(tick_dt), "label": tick_dt.strftime("%a")})
-    day_lines.append(x_for(end))
+        day_ticks.append({"x": round(x_for(tick_dt)), "label": tick_dt.strftime("%a")})
+    day_lines.append(round(x_for(end)))
 
     history_points = []
     temps = []
+    history_by_date: dict[datetime.date, list[float]] = {}
     for entry in history:
         dt = _parse_iso(entry.get("last_updated")) or _parse_iso(entry.get("last_changed"))
         value = _coerce_float_value(entry.get("state"))
@@ -205,36 +217,54 @@ def _build_graph_series(
         value = _convert_temp(value, unit, desired_unit)
         history_points.append({"ts": dt, "value": value})
         temps.append(value)
+        history_by_date.setdefault(dt.date(), []).append(value)
 
-    end_today = now.replace(hour=23, minute=59, second=59, microsecond=0)
     forecast_high = []
     forecast_low = []
-    for item in forecast_hourly:
-        dt = _parse_iso(item.get("datetime"))
-        if dt is None or dt > end_today or dt > end:
-            continue
-        temp = _coerce_float_value(item.get("temperature"))
-        if temp is None:
-            continue
-        temp = _convert_temp(temp, desired_unit, desired_unit)
-        forecast_high.append({"ts": dt, "value": temp})
-        forecast_low.append({"ts": dt, "value": temp})
-        temps.append(temp)
-
+    forecast_by_date: dict[datetime.date, dict[str, float]] = {}
     for item in forecast_daily:
         dt = _parse_iso(item.get("datetime"))
-        if dt is None or dt <= end_today or dt > end:
+        if dt is None:
             continue
         high = _coerce_float_value(item.get("temperature"))
         low = _coerce_float_value(item.get("templow"))
         if high is not None:
             high = _convert_temp(high, desired_unit, desired_unit)
-            forecast_high.append({"ts": dt, "value": high})
-            temps.append(high)
         if low is not None:
             low = _convert_temp(low, desired_unit, desired_unit)
-            forecast_low.append({"ts": dt, "value": low})
-            temps.append(low)
+        if high is None and low is None:
+            continue
+        forecast_by_date[dt.date()] = {
+            "high": high if high is not None else low,
+            "low": low if low is not None else high,
+        }
+
+    for i in range(total_days):
+        day = start_day + timedelta(days=i)
+        day_start = datetime.combine(day, dt_time(0, 0), tzinfo=now.tzinfo)
+        day_end = day_start + timedelta(days=1)
+        if day_end > end:
+            day_end = end
+        if day in forecast_by_date and day >= now.date():
+            high = forecast_by_date[day]["high"]
+            low = forecast_by_date[day]["low"]
+            if high is not None:
+                forecast_high.append({"ts": day_start, "value": high})
+                forecast_high.append({"ts": day_end, "value": high})
+                temps.append(high)
+            if low is not None:
+                forecast_low.append({"ts": day_start, "value": low})
+                forecast_low.append({"ts": day_end, "value": low})
+                temps.append(low)
+        elif day in history_by_date:
+            day_values = history_by_date[day]
+            day_min = min(day_values)
+            day_max = max(day_values)
+            forecast_high.append({"ts": day_start, "value": day_max})
+            forecast_high.append({"ts": day_end, "value": day_max})
+            forecast_low.append({"ts": day_start, "value": day_min})
+            forecast_low.append({"ts": day_end, "value": day_min})
+            temps.extend([day_min, day_max])
 
     if not temps:
         return [], [], [], day_ticks, day_lines, None, None
@@ -255,6 +285,9 @@ def _build_graph_series(
     history_points_xy = [{"x": x_for(p["ts"]), "y": y_for(p["value"])} for p in history_points]
     forecast_high_xy = [{"x": x_for(p["ts"]), "y": y_for(p["value"])} for p in forecast_high]
     forecast_low_xy = [{"x": x_for(p["ts"]), "y": y_for(p["value"])} for p in forecast_low]
+    if history_points_xy:
+        first = history_points_xy[0]
+        history_points_xy.insert(0, {"x": graph_left - 10, "y": first["y"]})
     return (
         history_points_xy,
         forecast_high_xy,
@@ -282,7 +315,7 @@ def _format_temp_pair(temp: float | int | None, unit: str | None, sep: str = "/"
         c = round((value - 32) * 5 / 9)
     else:
         return {"c": f"{round(value)}°", "f": ""}
-    return {"c": f"{c}°", "f": f"{f}F"}
+    return {"c": f"{c}°", "f": f"{f}F", "c_value": f"{c}", "c_deg": "°"}
 
 
 def _normalize_temp_unit(value: str | None, fallback: str | None = None) -> str:
@@ -366,8 +399,18 @@ def _resolve_optional_path(value: str | None, use_cwd_if_relative: bool = False)
 
 def _png_to_bmp(png_bytes: bytes) -> bytes:
     with Image.open(io.BytesIO(png_bytes)) as image:
-        # Avoid dithered 1-bit output; use a hard threshold for crisp lines.
-        image = image.convert("L").point(lambda p: 255 if p > 128 else 0, mode="1")
+        gray_levels = _env_int("GRAYSCALE_LEVELS", 0)
+        if gray_levels and gray_levels > 2:
+            image = _quantize_grayscale(image, gray_levels)
+        else:
+            dither_mode = os.getenv("BMP_DITHER", "fs").strip().lower()
+            if dither_mode in ("none", "off", "0"):
+                threshold = _env_int("BMP_THRESHOLD", 140)
+                image = image.convert("L").point(
+                    lambda p: 255 if p >= threshold else 0, mode="1"
+                )
+            else:
+                image = image.convert("1")
         output = io.BytesIO()
         image.save(output, format="BMP")
         return output.getvalue()
@@ -398,6 +441,13 @@ def _describe_icon(value: str | None) -> str:
         name = unicodedata.name(char, "UNKNOWN")
         parts.append(f"{codepoint}:{name}")
     return ",".join(parts)
+
+
+def _quantize_grayscale(image: Image.Image, levels: int) -> Image.Image:
+    levels = max(2, min(levels, 16))
+    gray = image.convert("L")
+    step = 255 / (levels - 1)
+    return gray.point(lambda p: int(round(p / step) * step))
 
 
 def _env_int(name: str, default: int) -> int:
@@ -434,6 +484,7 @@ class HARenderer:
         self.entities = [e.strip() for e in os.getenv("ENTITIES", "").split(",") if e.strip()]
         self.width = _env_int("WIDTH", 800)
         self.height = _env_int("HEIGHT", 480)
+        self.render_scale = max(1, _env_int("RENDER_SCALE", 1))
         self.refresh_seconds = _env_optional_int("REFRESH_SECONDS")
         self.display_refresh_rate = _env_int(
             "DISPLAY_REFRESH_RATE",
@@ -461,7 +512,7 @@ class HARenderer:
         self.forecast_type = os.getenv("FORECAST_TYPE", "daily").strip().lower()
         self.forecast_hourly_limit = _env_int("FORECAST_HOURLY_LIMIT", 8)
         self.forecast_daily_limit = _env_int("FORECAST_DAILY_LIMIT", 6)
-        self.history_days = _env_int("HISTORY_DAYS", 3)
+        self.history_days = _env_int("HISTORY_DAYS", 4)
         self.forecast_days = _env_int("FORECAST_DAYS", 3)
         self.render_all_devices_on_refresh = os.getenv(
             "RENDER_ALL_DEVICES_ON_REFRESH", "false"
@@ -498,6 +549,8 @@ class HARenderer:
         self.mqtt_password = os.getenv("MQTT_PASSWORD", "")
         self.mqtt_prefix = os.getenv("MQTT_PREFIX", "trmnl")
         self.discovery_prefix = os.getenv("MQTT_DISCOVERY_PREFIX", "homeassistant")
+        self.mqtt_device_id_suffix_len = _env_optional_int("MQTT_DEVICE_ID_SUFFIX_LEN")
+        self.mqtt_device_name_prefix = os.getenv("MQTT_DEVICE_NAME_PREFIX", "TRMNL").strip()
         self.lock = threading.Lock()
         self.last_error = ""
         self.device_state: dict[str, str] = {}
@@ -731,7 +784,7 @@ class HARenderer:
         )
         template = env.get_template(template_path.name)
 
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
         prepared = []
         by_id: dict[str, dict] = {}
         for entity in entities:
@@ -905,8 +958,28 @@ class HARenderer:
             line_height=40,
             start_y=120,
         )
-        png_bytes = cairosvg.svg2png(bytestring=svg.encode("utf-8"), url=str(template_path))
+        if self.render_scale > 1:
+            png_bytes = cairosvg.svg2png(
+                bytestring=svg.encode("utf-8"),
+                url=str(template_path),
+                output_width=self.width * self.render_scale,
+                output_height=self.height * self.render_scale,
+            )
+            with Image.open(io.BytesIO(png_bytes)) as image:
+                image = image.resize((self.width, self.height), resample=Image.LANCZOS)
+                resized = io.BytesIO()
+                image.save(resized, format="PNG")
+                png_bytes = resized.getvalue()
+        else:
+            png_bytes = cairosvg.svg2png(bytestring=svg.encode("utf-8"), url=str(template_path))
         if self.output_format == "png":
+            gray_levels = _env_int("GRAYSCALE_LEVELS", 0)
+            if gray_levels and gray_levels > 2:
+                with Image.open(io.BytesIO(png_bytes)) as image:
+                    image = _quantize_grayscale(image, gray_levels)
+                    output = io.BytesIO()
+                    image.save(output, format="PNG")
+                    return output.getvalue()
             return png_bytes
         return _png_to_bmp(png_bytes)
 
@@ -1157,6 +1230,7 @@ class HARenderer:
         index = self.device_screen_index.get(normalized, 0)
 
         advance = False
+        delta = 0.0
         if last_ts is not None:
             delta = now - last_ts
             if delta < self.early_display_threshold:
@@ -1169,6 +1243,20 @@ class HARenderer:
                     index = 0
         if advance:
             index = (index + 1) % screen_count
+
+        if os.getenv("DEBUG_SCREENS", "").strip():
+            late_threshold = self.late_display_threshold
+            if late_threshold is None:
+                late_threshold = max(1, self.display_refresh_rate * 2)
+            print(
+                "[screen] "
+                f"device={normalized} delta={delta:.2f}s "
+                f"early={self.early_display_threshold}s "
+                f"late={late_threshold}s "
+                f"advance={advance} index={index}/{screen_count}",
+                file=sys.stderr,
+                flush=True,
+            )
 
         self.device_last_display_delta[normalized] = delta if last_ts is not None else 0.0
         self.device_last_display[normalized] = now
@@ -1187,9 +1275,13 @@ class HARenderer:
         try:
             device = _derive_device_state(self.device_state)
             if not device.get("device_id"):
-                device_id = "unknown"
+                device_id_full = "unknown"
             else:
-                device_id = str(device["device_id"]).lower().replace(":", "")
+                device_id_full = str(device["device_id"]).lower().replace(":", "")
+
+            device_id = device_id_full
+            if self.mqtt_device_id_suffix_len:
+                device_id = device_id_full[-self.mqtt_device_id_suffix_len :] or device_id_full
 
             base_topic = f"{self.mqtt_prefix}/{device_id}"
             discovery_id = f"trmnl_{device_id}"
@@ -1213,8 +1305,8 @@ class HARenderer:
                     "value_template": value_template,
                     "unique_id": f"{discovery_id}_{kind}",
                     "device": {
-                        "identifiers": [discovery_id],
-                        "name": f"TRMNL {device_id}",
+                        "identifiers": [discovery_id, device_id_full],
+                        "name": f"{self.mqtt_device_name_prefix} {device_id}",
                         "manufacturer": "TRMNL",
                     },
                 }
@@ -1390,6 +1482,7 @@ def make_handler(renderer: HARenderer) -> type[BaseHTTPRequestHandler]:
             ):
                 path_only = self.path.split("?", 1)[0]
                 parts = path_only.strip("/").split("/")
+                cache_key = None
                 if len(parts) == 3:
                     _, device_id, filename = parts
                     image_hash = filename.removesuffix(f".{renderer.output_format}")

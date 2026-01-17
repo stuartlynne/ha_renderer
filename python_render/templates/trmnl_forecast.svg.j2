@@ -4,76 +4,82 @@
       font-family: "TGL_0-1451Eng";
       src: url("../fonts/TGL_0-1451Eng.ttf");
     }
-    text { font-family: "DejaVu Sans", "Noto Emoji", "Noto Color Emoji", Arial, sans-serif; fill: #000; }
-    .title { font-size: 40px; font-weight: 700; }
-    .label { font-size: 22px; fill: #333; }
+    text { font-family: "DejaVu Sans", "Noto Emoji", "Noto Color Emoji", Arial, sans-serif; fill: #000; font-weight: 700; }
+    .title { font-size: 72px; font-weight: 700; }
+    .label { font-size: 22px; fill: #000; }
     .value { font-size: 40px; font-weight: 700; }
-    .muted { fill: #666; }
-    .dim { fill: #333; font-weight: 600; }
+    .muted { fill: #000; }
+    .dim { fill: #000; font-weight: 700; }
     .mid { fill: #000; font-weight: 700; }
     .bar { font-weight: 400; }
-    .divider { stroke: #aaa; stroke-width: 3; }
+    .divider { stroke: #000; stroke-width: 2; }
     .icon { font-size: 37px; font-family: "DejaVu Sans", Arial, sans-serif; }
+    .icon-big { font-size: 207px; font-family: "DejaVu Sans", Arial, sans-serif; }
     .small { font-size: 19px; }
     .tiny { font-size: 17px; }
     .tiny-top { font-size: 20px; }
+    .temp-big { font-size: 88px; }
+    .temp-big-small { font-size: 34px; }
+    .temp-stack { font-size: 60px; font-weight: 700; }
+    .temp-stack-deg { font-size: 80%; }
     .day { font-size: 22px; font-weight: 700; }
+    .temp-main { font-size: 24px; }
     .temp { font-family: "TGL_0-1451Eng", "DejaVu Sans", Arial, sans-serif; }
     .tall { transform: scale(1, 1.3); transform-origin: center; }
   </style>
   <rect x="0" y="0" width="{{ width }}" height="{{ height }}" fill="#fff" />
 
   <!-- Current row -->
-  <text x="20" y="46" class="title">
-    {{ current_weather.condition or "--" }} {% if current_weather.icon %}{{ current_weather.icon }}{% endif %}
-  </text>
-  {% set top_temp = outside.temp_pair if outside and outside.temp_pair else current_weather.temp_pair %}
-  <text x="{{ width - 258 }}" y="50" class="value temp tall" text-anchor="end">
-    {{ top_temp.c }}
-  </text>
-  <text x="{{ width - 256 }}" y="50" class="tiny temp tall" text-anchor="start">
-    <tspan class="bar">|</tspan>{{ top_temp.f }}
-  </text>
-  <text x="20" y="86" class="label">
-    Humidity: {% if current_weather.humidity is not none %}{{ current_weather.humidity }}%{% else %}--{% endif %}
-  </text>
-  <text x="260" y="86" class="label">
-    Pressure: {% if current_weather.pressure is not none %}{{ current_weather.pressure }}{% else %}--{% endif %}
-  </text>
-  <text x="520" y="86" class="label">
-    Wind: {% if current_weather.wind_speed is not none %}{{ current_weather.wind_speed }}{% else %}--{% endif %}
-  </text>
-  {% if top_temp %}
-  <text x="{{ width - 220 }}" y="46" class="title temp" text-anchor="end">
-    {{ top_temp.c }}
-  </text>
-  <text x="{{ width - 218 }}" y="46" class="tiny-top temp" text-anchor="start">
-    <tspan class="bar">|</tspan><tspan dx="2">{{ top_temp.f }}</tspan>
-  </text>
+  {% set condition = (current_weather.condition or "--").replace("_", "-") %}
+  {% if condition == "partlycloudy" %}
+    {% set condition = "partly-cloudy" %}
   {% endif %}
+  {% set parts = condition.split("-") %}
+  <text x="20" y="56" class="title">{{ parts[0] }}</text>
+  {% if parts|length > 1 %}
+    <text x="20" y="126" class="title">{{ parts[1] }}</text>
+  {% endif %}
+  {% if current_weather.icon %}
+    <text x="375" y="151" class="icon-big">{{ current_weather.icon }}</text>
+  {% endif %}
+  {% set top_temp = outside.temp_pair if outside and outside.temp_pair else current_weather.temp_pair %}
+  <text x="{{ width - 160 }}" y="135" class="value temp tall temp-big" text-anchor="end">
+    {% if top_temp.c_value is defined %}
+      {{ top_temp.c_value }}
+    {% else %}
+      {{ top_temp.c }}
+    {% endif %}
+  </text>
+  <circle cx="{{ width - 142 }}" cy="32" r="6" fill="none" stroke="#000" stroke-width="2" />
+  <text x="{{ width - 150 }}" y="100" class="temp-stack" text-anchor="start">
+    |{{ top_temp.f }}
+  </text>
+  {# humidity/pressure/wind moved to bottom row #}
+  {# duplicate temp block removed #}
 
-  <line x1="20" y1="110" x2="{{ width - 20 }}" y2="110" class="divider" />
+  <line x1="20" y1="155" x2="{{ width - 20 }}" y2="155" class="divider" />
 
   <!-- Hourly row -->
-  {% set hourly_count = forecast_hourly | length %}
+  {% set hourly_items = forecast_hourly[2:] %}
+  {% set hourly_count = hourly_items | length %}
   {% if hourly_count == 0 %}
     <text x="20" y="164" class="label muted">No hourly forecast</text>
   {% else %}
     {% set slot = (width - 40) / hourly_count %}
-    {% for item in forecast_hourly %}
+    {% for item in hourly_items %}
       {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
-      <text x="{{ x }}" y="144" text-anchor="middle" class="small">{{ item.label or "" }}</text>
-      <text x="{{ x }}" y="178" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
-      <text x="{{ x + 2 }}" y="216" text-anchor="end" class="label mid temp tall">
+      <text x="{{ x }}" y="189" text-anchor="middle" class="small">{{ item.label or "" }}</text>
+      <text x="{{ x }}" y="223" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
+      <text x="{{ x + 2 }}" y="261" text-anchor="end" class="label mid temp tall temp-main">
         {{ item.temperature.c }}
       </text>
-      <text x="{{ x + 4 }}" y="216" text-anchor="start" class="tiny temp tall">
+      <text x="{{ x + 4 }}" y="261" text-anchor="start" class="tiny temp tall">
         <tspan class="bar">|</tspan><tspan dx="2">{{ item.temperature.f }}</tspan>
       </text>
     {% endfor %}
   {% endif %}
 
-  <line x1="20" y1="230" x2="{{ width - 20 }}" y2="230" class="divider" />
+  <line x1="20" y1="285" x2="{{ width - 20 }}" y2="285" class="divider" />
 
   <!-- Daily row -->
   {% set daily_count = forecast_daily | length %}
@@ -83,37 +89,41 @@
     {% set slot = (width - 40) / daily_count %}
     {% for item in forecast_daily %}
       {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
-      <text x="{{ x }}" y="272" text-anchor="middle" class="day">{{ item.label or "" }}</text>
-      <text x="{{ x }}" y="310" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
-      <text x="{{ x + 2 }}" y="320" text-anchor="end" class="label mid temp tall">
+      <text x="{{ x }}" y="317" text-anchor="middle" class="day">{{ item.label or "" }}</text>
+      <text x="{{ x }}" y="355" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
+      <text x="{{ x + 2 }}" y="365" text-anchor="end" class="label mid temp tall temp-main">
         {{ item.temperature.c }}
       </text>
-      <text x="{{ x + 4 }}" y="320" text-anchor="start" class="tiny temp tall">
+      <text x="{{ x + 4 }}" y="365" text-anchor="start" class="tiny temp tall">
         <tspan class="bar">|</tspan><tspan dx="2">{{ item.temperature.f }}</tspan>
       </text>
-      <text x="{{ x + 2 }}" y="338" text-anchor="end" class="small dim temp tall">
+      <text x="{{ x + 2 }}" y="383" text-anchor="end" class="small dim temp tall">
         {{ item.templow.c }}
       </text>
-      <text x="{{ x + 4 }}" y="338" text-anchor="start" class="tiny temp tall">
+      <text x="{{ x + 4 }}" y="383" text-anchor="start" class="tiny temp tall">
         <tspan class="bar">|</tspan><tspan dx="2">{{ item.templow.f }}</tspan>
       </text>
     {% endfor %}
   {% endif %}
 
-  <line x1="20" y1="{{ height - 72 }}" x2="{{ width - 20 }}" y2="{{ height - 72 }}" class="divider" />
+  <line x1="20" y1="{{ height - 40 }}" x2="{{ width - 20 }}" y2="{{ height - 40 }}" class="divider" />
 
-  <text x="20" y="{{ height - 28 }}" class="temp" style="font-size: 21px; font-weight: 700; fill: #555;" transform="scale(1,1.2)" transform-origin="left {{ height - 28 }}px">
+  <text x="5" y="{{ height - 3 }}" class="temp" style="font-size: 21px; font-weight: 700; fill: #555;" transform="scale(1,1.2)" transform-origin="left {{ height - 3 }}px">
     {{ now }}
   </text>
-  <text x="260" y="{{ height - 28 }}" class="small muted">
-    {{ device.ip or "--" }}
+  <path d="M{{ 205 }} {{ height - 10 }} Q{{ 210 }} {{ height - 20 }} {{ 215 }} {{ height - 10 }} Q{{ 215 }} {{ height - 4 }} {{ 210 }} {{ height - 2 }} Q{{ 205 }} {{ height - 4 }} {{ 205 }} {{ height - 10 }} Z" fill="#000" />
+  <text x="220" y="{{ height - 3 }}" class="small muted">
+    {% if current_weather.humidity is not none %}{{ current_weather.humidity }}%{% else %}--{% endif %}
   </text>
-  <text x="{{ width - 380 }}" y="{{ height - 28 }}" class="small muted">
-    Δ: {{ "%.0fs" % (meta.last_display_delta or 0) }}
+  <text x="{{ width - 480 }}" y="{{ height - 2 }}" class="small muted">
+    {% if current_weather.pressure is not none %}{{ current_weather.pressure }}mb{% else %}--{% endif %}
+  </text>
+  <text x="{{ width - 330 }}" y="{{ height - 2 }}" class="small muted">
+    {% if current_weather.wind_speed is not none %}{{ current_weather.wind_speed }}kmh{% else %}--{% endif %}
   </text>
   <!-- Battery icon -->
-  <rect x="{{ width - 78 }}" y="{{ height - 44 }}" width="48" height="14" rx="3" ry="3" fill="none" stroke="#333" stroke-width="2" />
-  <rect x="{{ width - 28 }}" y="{{ height - 41 }}" width="5" height="8" rx="2" ry="2" fill="#333" />
+  <rect x="{{ width - 55 }}" y="{{ height - 16 }}" width="48" height="14" rx="3" ry="3" fill="none" stroke="#333" stroke-width="2" />
+  <rect x="{{ width - 5 }}" y="{{ height - 13 }}" width="5" height="8" rx="2" ry="2" fill="#333" />
   {% set level = device.battery_level %}
   {% if level %}
     {% set bars = 0 %}
@@ -127,16 +137,44 @@
       {% set bars = 1 %}
     {% endif %}
     {% for i in range(bars) %}
-      <rect x="{{ width - 74 + (i * 10) }}" y="{{ height - 42 }}" width="8" height="10" fill="#333" />
+      <rect x="{{ width - 51 + (i * 10) }}" y="{{ height - 14 }}" width="8" height="10" fill="#333" />
     {% endfor %}
   {% endif %}
 
-  <text x="{{ width - 280 }}" y="{{ height - 28 }}" class="small muted">
-    WiFi: {% if device.rssi is not none %}{{ device.rssi }}{% else %}--{% endif %}
-    {% if device.battery_percent is not none %} | {{ device.battery_percent }}%{% endif %}
-  </text>
+  {% set rssi = device.rssi %}
+  {% set wifi_bars = 0 %}
+  {% if rssi is not none %}
+    {% if rssi >= -50 %}
+      {% set wifi_bars = 4 %}
+    {% elif rssi >= -60 %}
+      {% set wifi_bars = 3 %}
+    {% elif rssi >= -70 %}
+      {% set wifi_bars = 2 %}
+    {% elif rssi >= -80 %}
+      {% set wifi_bars = 1 %}
+    {% else %}
+      {% set wifi_bars = 0 %}
+    {% endif %}
+  {% endif %}
+  {% set wifi_x = width - 159 %}
+  {% set wifi_y = height - 15 %}
+  {% if rssi is not none %}
+    <text x="{{ wifi_x - 38 }}" y="{{ height - 2 }}" class="small muted">{{ "%.0f" % rssi }}</text>
+  {% endif %}
+  {% for i in range(4) %}
+    {% set bar_h = 4 + (i * 3) %}
+    {% set bar_y = wifi_y + (12 - bar_h) %}
+    {% if i < wifi_bars %}
+      <rect x="{{ wifi_x + (i * 8) }}" y="{{ bar_y }}" width="6" height="{{ bar_h }}" fill="#333" />
+    {% else %}
+      <rect x="{{ wifi_x + (i * 8) }}" y="{{ bar_y }}" width="6" height="{{ bar_h }}" fill="none" stroke="#333" stroke-width="1" />
+    {% endif %}
+  {% endfor %}
+  {% if device.battery_percent is not none %}
+    <text x="{{ wifi_x + 40 }}" y="{{ height - 2 }}" class="small muted">{{ device.battery_percent }}%</text>
+  {% endif %}
 
   {% if last_error %}
-    <text x="20" y="{{ height - 10 }}" class="small muted">Last error: {{ last_error }}</text>
+    <text x="20" y="{{ height - 0 }}" class="small muted">Last error: {{ last_error }}</text>
   {% endif %}
 </svg>
