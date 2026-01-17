@@ -13,8 +13,9 @@
     .mid { fill: #000; font-weight: 700; }
     .bar { font-weight: 400; }
     .divider { stroke: #000; stroke-width: 2; }
-    .icon { font-size: 37px; font-family: "DejaVu Sans", Arial, sans-serif; }
-    .icon-big { font-size: 207px; font-family: "DejaVu Sans", Arial, sans-serif; }
+    .icon { font-size: 37px; font-family: "DejaVu Sans", Arial, sans-serif; font-weight: 700; }
+    .icon-light { font-weight: 400; }
+    .icon-big { font-size: 207px; font-family: "DejaVu Sans", Arial, sans-serif; font-weight: 700; }
     .small { font-size: 19px; }
     .tiny { font-size: 17px; }
     .tiny-top { font-size: 20px; }
@@ -27,6 +28,21 @@
     .temp { font-family: "TGL_0-1451Eng", "DejaVu Sans", Arial, sans-serif; }
     .tall { transform: scale(1, 1.3); transform-origin: center; }
   </style>
+  {% macro cloud_icon(x, y, size, shade="#000", variant="cloudy") -%}
+    {% set s = size / 60 %}
+    <g transform="translate({{ x }} {{ y }}) scale({{ s }})" fill="{{ shade }}">
+      <circle cx="-18" cy="8" r="9" />
+      {% if variant == "cloudy" %}
+        <circle cx="0" cy="10" r="10" />
+      {% endif %}
+      <circle cx="18" cy="8" r="9" />
+      <circle cx="-12" cy="0" r="12" />
+      <circle cx="6" cy="-10" r="16" />
+      {% if variant == "cloudy" %}
+        <circle cx="22" cy="0" r="12" />
+      {% endif %}
+    </g>
+  {%- endmacro %}
   <rect x="0" y="0" width="{{ width }}" height="{{ height }}" fill="#fff" />
 
   <!-- Current row -->
@@ -40,7 +56,11 @@
     <text x="20" y="136" class="title">{{ parts[1] }}</text>
   {% endif %}
   {% if current_weather.icon %}
-    <text x="375" y="151" class="icon-big">{{ current_weather.icon }}</text>
+    {% if (current_weather.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
+      {{ cloud_icon(445 + (current_weather.icon_dx_big or 0), 111 + (current_weather.icon_dy_big or 0), 207 * (current_weather.icon_scale_big or 1), "#777", "cloudy" if (current_weather.condition or '') in ('cloudy','overcast') else "partly") }}
+    {% else %}
+      <text x="{{ 345 + (current_weather.icon_dx_big or 0) }}" y="{{ 151 + (current_weather.icon_dy_big or 0) }}" class="icon-big" style="font-size: {{ 207 * (current_weather.icon_scale_big or 1) }}px;">{{ current_weather.icon }}</text>
+    {% endif %}
   {% endif %}
   {% set top_temp = outside.temp_pair if outside and outside.temp_pair else current_weather.temp_pair %}
   <text x="{{ width - 160 }}" y="135" class="value temp tall temp-big" text-anchor="end">
@@ -69,7 +89,11 @@
     {% for item in hourly_items %}
       {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
       <text x="{{ x }}" y="189" text-anchor="middle" class="small">{{ item.label or "" }}</text>
-      <text x="{{ x }}" y="223" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
+      {% if (item.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
+        {{ cloud_icon(x + (item.icon_dx or 0), 223 + (item.icon_dy or 0), 37 * (item.icon_scale or 1), "#777", "cloudy" if (item.condition or '') in ('cloudy','overcast') else "partly") }}
+      {% else %}
+        <text x="{{ x + (item.icon_dx or 0) }}" y="{{ 223 + (item.icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 37 * (item.icon_scale or 1) }}px;">{{ item.icon or "•" }}</text>
+      {% endif %}
       <text x="{{ x + 2 }}" y="261" text-anchor="end" class="label mid temp tall temp-main">
         {{ item.temperature.c }}
       </text>
@@ -90,7 +114,11 @@
     {% for item in forecast_daily %}
       {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
       <text x="{{ x }}" y="317" text-anchor="middle" class="day">{{ item.label or "" }}</text>
-      <text x="{{ x }}" y="355" text-anchor="middle" class="icon">{{ item.icon or "•" }}</text>
+      {% if (item.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
+        {{ cloud_icon(x + (item.icon_dx or 0), 355 + (item.icon_dy or 0), 37 * (item.icon_scale or 1), "#777", "cloudy" if (item.condition or '') in ('cloudy','overcast') else "partly") }}
+      {% else %}
+        <text x="{{ x + (item.icon_dx or 0) }}" y="{{ 355 + (item.icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 37 * (item.icon_scale or 1) }}px;">{{ item.icon or "•" }}</text>
+      {% endif %}
       <text x="{{ x + 2 }}" y="365" text-anchor="end" class="label mid temp tall temp-main">
         {{ item.temperature.c }}
       </text>

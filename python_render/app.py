@@ -156,6 +156,30 @@ def _condition_icon(condition: str | None) -> str:
     return "•"
 
 
+def _icon_offset(condition: str | None) -> tuple[int, int]:
+    if not condition:
+        return (0, 0)
+    key = condition.strip().lower().replace("_", "-")
+    if key in ("partlycloudy", "partly-cloudy"):
+        return (0, -1)
+    if key in ("cloudy", "overcast"):
+        return (0, -1)
+    if key in ("fog",):
+        return (0, -2)
+    return (0, 0)
+
+
+def _icon_scale(condition: str | None) -> float:
+    if not condition:
+        return 1.0
+    key = condition.strip().lower().replace("_", "-")
+    if key in ("cloudy", "overcast"):
+        return 0.85
+    if key in ("partlycloudy", "partly-cloudy"):
+        return 0.9
+    return 1.0
+
+
 def _convert_temp(value: float, from_unit: str | None, to_unit: str | None) -> float:
     if not from_unit or not to_unit or from_unit == to_unit:
         return value
@@ -518,6 +542,8 @@ class HARenderer:
         self.render_all_devices_on_refresh = os.getenv(
             "RENDER_ALL_DEVICES_ON_REFRESH", "false"
         ).lower() in ("1", "true", "yes", "on")
+        self.icon_offset_scale = _env_int("ICON_OFFSET_SCALE", 10)
+        self.icon_offset_scale_big = _env_int("ICON_OFFSET_SCALE_BIG", 30)
         self.forecast_mode = os.getenv("FORECAST_MODE", "websocket").strip().lower()
         self.public_url = os.getenv("PUBLIC_URL", "").rstrip("/")
         self.log_path = _resolve_path(
@@ -846,6 +872,10 @@ class HARenderer:
 
         hourly_items = []
         for item in forecast_hourly[: self.forecast_hourly_limit]:
+            icon_dx, icon_dy = _icon_offset(item.get("condition"))
+            icon_dx *= self.icon_offset_scale
+            icon_dy *= self.icon_offset_scale
+            icon_scale = _icon_scale(item.get("condition"))
             icon = _condition_icon(item.get("condition"))
             hourly_items.append(
                 {
@@ -853,6 +883,9 @@ class HARenderer:
                     "temperature": _format_temp_pair(item.get("temperature"), temp_unit),
                     "condition": item.get("condition"),
                     "icon": icon,
+                    "icon_dx": icon_dx,
+                    "icon_dy": icon_dy,
+                    "icon_scale": icon_scale,
                 }
             )
             if os.getenv("DEBUG_ICONS", "").strip():
@@ -867,6 +900,10 @@ class HARenderer:
 
         daily_items = []
         for item in forecast_daily[: self.forecast_daily_limit]:
+            icon_dx, icon_dy = _icon_offset(item.get("condition"))
+            icon_dx *= self.icon_offset_scale
+            icon_dy *= self.icon_offset_scale
+            icon_scale = _icon_scale(item.get("condition"))
             icon = _condition_icon(item.get("condition"))
             daily_items.append(
                 {
@@ -875,6 +912,9 @@ class HARenderer:
                     "templow": _format_temp_pair(item.get("templow"), temp_unit),
                     "condition": item.get("condition"),
                     "icon": icon,
+                    "icon_dx": icon_dx,
+                    "icon_dy": icon_dy,
+                    "icon_scale": icon_scale,
                 }
             )
             if os.getenv("DEBUG_ICONS", "").strip():
@@ -902,6 +942,14 @@ class HARenderer:
             "wind_speed": attrs.get("wind_speed"),
             "wind_bearing": attrs.get("wind_bearing"),
         }
+        icon_dx, icon_dy = _icon_offset(weather.get("state"))
+        icon_scale = _icon_scale(weather.get("state"))
+        current["icon_dx"] = icon_dx
+        current["icon_dy"] = icon_dy
+        current["icon_dx_big"] = icon_dx * self.icon_offset_scale_big
+        current["icon_dy_big"] = icon_dy * self.icon_offset_scale_big
+        current["icon_scale"] = icon_scale
+        current["icon_scale_big"] = icon_scale
         current["temp_pair"] = _format_temp_pair(current.get("temperature"), temp_unit)
 
         history_points = []
