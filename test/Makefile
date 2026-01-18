@@ -3,28 +3,29 @@ SHELL := /bin/bash
 ENV_FILE := ha_renderer.env
 TEMPLATE_SRC := ../python_render/templates/trmnl.svg.j2
 TEMPLATE_DST := templates/trmnl.svg.j2 templates/trmnl_default.svg.j2 templates/trmnl_forecast.svg.j2
-FONT_DST := fonts/TGL_0-1451Eng.ttf
-DIRS_NEEDED := data templates fonts
+#FONT_DST := fonts/TGL_0-1451Eng.ttf
+#DIRS_NEEDED := data templates fonts
 
 .PHONY: all clean ha-states ha-weather-list ha-weather ha-forecast ha-ws-forecast ha-outside ha-outside-history
 
-all: $(DIRS_NEEDED) $(TEMPLATE_DST) $(FONT_DST)
+#all: $(DIRS_NEEDED) $(TEMPLATE_DST) $(FONT_DST)
+all: 
 	set -a; source $(ENV_FILE); set +a; python ../python_render/app.py 2>&1 | tee stderr.txt
 
 $(DIRS_NEEDED):
 	mkdir -p $@
 
-templates/trmnl.svg.j2: ../python_render/templates/trmnl.svg.j2 | templates
-	cp ../python_render/templates/trmnl.svg.j2 templates/trmnl.svg.j2
+#templates/trmnl.svg.j2: ../python_render/templates/trmnl.svg.j2 | templates
+#	cp ../python_render/templates/trmnl.svg.j2 templates/trmnl.svg.j2
 
-templates/trmnl_default.svg.j2: ../python_render/templates/trmnl_default.svg.j2 | templates
-	cp ../python_render/templates/trmnl_default.svg.j2 templates/trmnl_default.svg.j2
+#templates/trmnl_default.svg.j2: ../python_render/templates/trmnl_default.svg.j2 | templates
+#	cp ../python_render/templates/trmnl_default.svg.j2 templates/trmnl_default.svg.j2
 
-templates/trmnl_forecast.svg.j2: ../python_render/templates/trmnl_forecast.svg.j2 | templates
-	cp ../python_render/templates/trmnl_forecast.svg.j2 templates/trmnl_forecast.svg.j2
+#templates/trmnl_forecast.svg.j2: ../python_render/templates/trmnl_forecast.svg.j2 | templates
+#	cp ../python_render/templates/trmnl_forecast.svg.j2 templates/trmnl_forecast.svg.j2
 
-fonts/TGL_0-1451Eng.ttf: ../python_render/fonts/TGL_0-1451Eng.ttf | fonts
-	cp ../python_render/fonts/TGL_0-1451Eng.ttf fonts/TGL_0-1451Eng.ttf
+#fonts/TGL_0-1451Eng.ttf: ../python_render/fonts/TGL_0-1451Eng.ttf | fonts
+#	cp ../python_render/fonts/TGL_0-1451Eng.ttf fonts/TGL_0-1451Eng.ttf
 
 clean:
 	rm -rf data
