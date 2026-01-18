@@ -34,7 +34,8 @@ FILES ?=
 # make the contents of docker.env or $(CONTAINER).env available to docker-compose 
 ENV = $(shell basename $(CURDIR)).env
 HOSTNAME = $(shell hostname)
-PUBLICIP = $(shell ip route get 1 | awk '{print $$7;}';exit)
+#PUBLICIP = $(shell ip route get 1 | awk '{print $$7;}';exit)
+#export PUBLICIP
 
 -include docker.env
 -include $(ENV)
