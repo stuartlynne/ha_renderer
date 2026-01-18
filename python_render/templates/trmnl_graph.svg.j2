@@ -4,7 +4,7 @@
       font-family: "TGL_0-1451Eng";
       src: url("../fonts/TGL_0-1451Eng.ttf");
     }
-    text { font-family: "DejaVu Sans", "Noto Emoji", "Noto Color Emoji", Arial, sans-serif; fill: #000; font-weight: 700; }
+    text { font-family: "DejaVu Sans", Arial, sans-serif; fill: #000; font-weight: 700; }
     .title { font-size: 72px; font-weight: 700; }
     .label { font-size: 22px; fill: #000; }
     .value { font-size: 40px; font-weight: 700; }
@@ -12,10 +12,7 @@
     .dim { fill: #000; font-weight: 700; }
     .mid { fill: #000; font-weight: 700; }
     .bar { font-weight: 400; }
-    .divider { stroke: #000; stroke-width: 2; }
-    .icon { font-size: 37px; font-family: "DejaVu Sans", Arial, sans-serif; font-weight: 700; }
-    .icon-light { font-weight: 400; }
-    .icon-big { font-size: 207px; font-family: "DejaVu Sans", Arial, sans-serif; font-weight: 700; }
+    .divider { stroke: #aaa; stroke-width: 3; }
     .small { font-size: 19px; }
     .tiny { font-size: 17px; }
     .tiny-top { font-size: 20px; }
@@ -23,10 +20,16 @@
     .temp-big-small { font-size: 44px; }
     .temp-stack { font-size: 78px; font-weight: 700; }
     .temp-stack-deg { font-size: 80%; }
+    .icon-big { font-size: 207px; font-family: "DejaVu Sans", Arial, sans-serif; }
     .day { font-size: 22px; font-weight: 700; }
-    .temp-main { font-size: 24px; }
     .temp { font-family: "TGL_0-1451Eng", "DejaVu Sans", Arial, sans-serif; }
     .tall { transform: scale(1, 1.3); transform-origin: center; }
+    .graph-line { fill: none; stroke: #000; stroke-width: 3; shape-rendering: crispEdges; }
+    .graph-line-alt { fill: none; stroke: #000; stroke-width: 2; stroke-dasharray: 6 6; shape-rendering: crispEdges; }
+    .graph-axis { stroke: #000; stroke-width: 2; shape-rendering: crispEdges; }
+    .graph-grid { stroke: #000; stroke-width: 1; shape-rendering: crispEdges; }
+    .icon-light { font-weight: 400; }
+    .icon-big { font-size: 207px; font-family: "DejaVu Sans", Arial, sans-serif; font-weight: 700; }
   </style>
   {% macro cloud_icon(x, y, size, shade="#000", variant="cloudy") -%}
     {% set s = size / 60 %}
@@ -53,7 +56,7 @@
   {% set parts = condition.split("-") %}
   <text x="20" y="56" class="title">{{ parts[0] }}</text>
   {% if parts|length > 1 %}
-    <text x="20" y="136" class="title">{{ parts[1] }}</text>
+    <text x="20" y="126" class="title">{{ parts[1] }}</text>
   {% endif %}
   {% if current_weather.icon %}
     {% if (current_weather.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
@@ -77,64 +80,51 @@
   {# humidity/pressure/wind moved to bottom row #}
   {# duplicate temp block removed #}
 
-  <line x1="20" y1="155" x2="{{ width - 20 }}" y2="155" class="divider" />
+  <!-- Graph area -->
+  {% set graph_left = 40 %}
+  {% set graph_right = width - 40 %}
+  {% set graph_top = 195 %}
+  {% set graph_bottom = height - 90 %}
+  <line x1="{{ graph_left }}" y1="{{ graph_top }}" x2="{{ graph_left }}" y2="{{ graph_bottom }}" class="graph-axis" />
+  <line x1="{{ graph_left }}" y1="{{ graph_bottom }}" x2="{{ graph_right }}" y2="{{ graph_bottom }}" class="graph-axis" />
 
-  <!-- Hourly row -->
-  {% set hourly_items = forecast_hourly[2:] %}
-  {% set hourly_count = hourly_items | length %}
-  {% if hourly_count == 0 %}
-    <text x="20" y="164" class="label muted">No hourly forecast</text>
-  {% else %}
-    {% set slot = (width - 40) / hourly_count %}
-    {% for item in hourly_items %}
-      {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
-      <text x="{{ x }}" y="189" text-anchor="middle" class="small">{{ item.label or "" }}</text>
-      {% if (item.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
-        {{ cloud_icon(x + (item.icon_dx or 0), 223 + (item.icon_dy or 0), 37 * (item.icon_scale or 1), "#777", "cloudy" if (item.condition or '') in ('cloudy','overcast') else "partly") }}
-      {% else %}
-        <text x="{{ x + (item.icon_dx or 0) }}" y="{{ 223 + (item.icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 37 * (item.icon_scale or 1) }}px;">{{ item.icon or "•" }}</text>
-      {% endif %}
-      <text x="{{ x + 2 }}" y="261" text-anchor="end" class="label mid temp tall temp-main">
-        {{ item.temperature.c }}
-      </text>
-      <text x="{{ x + 4 }}" y="261" text-anchor="start" class="tiny temp tall">
-        <tspan class="bar">|</tspan><tspan dx="2">{{ item.temperature.f }}</tspan>
-      </text>
+  {% if day_lines and day_lines|length > 0 %}
+    {% for x in day_lines %}
+      <line x1="{{ x }}" y1="{{ graph_top }}" x2="{{ x }}" y2="{{ graph_bottom }}" class="graph-grid" />
     {% endfor %}
   {% endif %}
 
-  <line x1="20" y1="285" x2="{{ width - 20 }}" y2="285" class="divider" />
-
-  <!-- Daily row -->
-  {% set daily_count = forecast_daily | length %}
-  {% if daily_count == 0 %}
-    <text x="20" y="284" class="label muted">No daily forecast</text>
-  {% else %}
-    {% set slot = (width - 40) / daily_count %}
-    {% for item in forecast_daily %}
-      {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
-      <text x="{{ x }}" y="317" text-anchor="middle" class="day">{{ item.label or "" }}</text>
-      {% if (item.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
-        {{ cloud_icon(x + (item.icon_dx or 0), 355 + (item.icon_dy or 0), 37 * (item.icon_scale or 1), "#777", "cloudy" if (item.condition or '') in ('cloudy','overcast') else "partly") }}
-      {% else %}
-        <text x="{{ x + (item.icon_dx or 0) }}" y="{{ 355 + (item.icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 37 * (item.icon_scale or 1) }}px;">{{ item.icon or "•" }}</text>
-      {% endif %}
-      <text x="{{ x + 2 }}" y="365" text-anchor="end" class="label mid temp tall temp-main">
-        {{ item.temperature.c }}
-      </text>
-      <text x="{{ x + 4 }}" y="365" text-anchor="start" class="tiny temp tall">
-        <tspan class="bar">|</tspan><tspan dx="2">{{ item.temperature.f }}</tspan>
-      </text>
-      <text x="{{ x + 2 }}" y="383" text-anchor="end" class="small dim temp tall">
-        {{ item.templow.c }}
-      </text>
-      <text x="{{ x + 4 }}" y="383" text-anchor="start" class="tiny temp tall">
-        <tspan class="bar">|</tspan><tspan dx="2">{{ item.templow.f }}</tspan>
-      </text>
+  {% if day_ticks and day_ticks|length > 0 %}
+    {% for tick in day_ticks %}
+      <text x="{{ tick.x }}" y="{{ graph_bottom + 40 }}" text-anchor="middle" class="small muted">{{ tick.label }}</text>
     {% endfor %}
   {% endif %}
 
-  <line x1="20" y1="{{ height - 40 }}" x2="{{ width - 20 }}" y2="{{ height - 40 }}" class="divider" />
+  <defs>
+    <clipPath id="graphClip">
+      <rect x="{{ graph_left + 2 }}" y="{{ graph_top }}" width="{{ graph_right - graph_left - 2 }}" height="{{ graph_bottom - graph_top }}" />
+    </clipPath>
+  </defs>
+
+  {% if history_points and history_points|length > 1 %}
+    <polyline class="graph-line" clip-path="url(#graphClip)" points="{% for p in history_points %}{{ p.x }},{{ p.y }} {% endfor %}" />
+  {% else %}
+    <text x="{{ graph_left }}" y="{{ graph_top + 24 }}" class="label muted">No history data</text>
+  {% endif %}
+
+  {% if forecast_high_points and forecast_high_points|length > 1 %}
+    <polyline class="graph-line-alt" clip-path="url(#graphClip)" points="{% for p in forecast_high_points %}{{ p.x }},{{ p.y }} {% endfor %}" />
+  {% endif %}
+  {% if forecast_low_points and forecast_low_points|length > 1 %}
+    <polyline class="graph-line-alt" clip-path="url(#graphClip)" points="{% for p in forecast_low_points %}{{ p.x }},{{ p.y }} {% endfor %}" />
+  {% endif %}
+
+  {% if graph_min is defined and graph_max is defined %}
+    <text x="{{ graph_left }}" y="{{ graph_top - 8 }}" class="small muted">{{ graph_max }}</text>
+    <text x="{{ graph_left }}" y="{{ graph_bottom + 18 }}" class="small muted">{{ graph_min }}</text>
+  {% endif %}
+
+  <line x1="20" y1="{{ height - 72 }}" x2="{{ width - 20 }}" y2="{{ height - 72 }}" class="divider" />
 
   <text x="5" y="{{ height - 3 }}" class="temp" style="font-size: 21px; font-weight: 700; fill: #555;" transform="scale(1,1.2)" transform-origin="left {{ height - 3 }}px">
     {{ now }}
