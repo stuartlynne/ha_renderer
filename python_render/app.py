@@ -636,11 +636,18 @@ class HARenderer:
         except OSError as exc:
             print(f"[config] unable to initialize {self.device_config_path}: {exc}", file=sys.stderr)
 
-        try:
-            template_dir = self.template_path.parent
-            _copy_templates_if_missing(template_dir, self.base_dir / "templates")
-        except OSError as exc:
-            print(f"[config] unable to populate templates: {exc}", file=sys.stderr)
+        copy_templates = os.getenv("COPY_TEMPLATES_IF_MISSING", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        if copy_templates:
+            try:
+                template_dir = self.template_path.parent
+                _copy_templates_if_missing(template_dir, self.base_dir / "templates")
+            except OSError as exc:
+                print(f"[config] unable to populate templates: {exc}", file=sys.stderr)
 
     def _load_device_config(self) -> None:
         self.device_config = {}
