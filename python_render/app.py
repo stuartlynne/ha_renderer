@@ -468,6 +468,25 @@ def _describe_icon(value: str | None) -> str:
     return ",".join(parts)
 
 
+def _resolve_template_fallback(base_dir: Path, template_path: Path) -> Path:
+    if template_path.exists():
+        return template_path
+    if template_path.name:
+        candidate = base_dir / "templates" / template_path.name
+        if candidate.exists():
+            return candidate
+    return template_path
+
+
+def _template_stem(path: Path) -> str:
+    name = path.name
+    if name.endswith(".svg.j2"):
+        return name[:-7]
+    if name.endswith(".j2"):
+        return name[:-3]
+    return path.stem
+
+
 def _quantize_grayscale(image: Image.Image, levels: int) -> Image.Image:
     levels = max(2, min(levels, 16))
     gray = image.convert("L")
@@ -801,7 +820,7 @@ class HARenderer:
             return None
 
     def _render(self, entities: list[dict], config: dict) -> bytes:
-        template_path = config["template_path"]
+        template_path = _resolve_template_fallback(self.base_dir, config["template_path"])
         if not template_path.exists():
             raise FileNotFoundError(f"template not found: {template_path}")
 
@@ -1087,6 +1106,7 @@ class HARenderer:
                 self.image_cache.pop(old_key, None)
             if self.save_last_bmp and self.output_format == "bmp":
                 suffix = (normalized or "default")[-6:] or "device"
+                screen = _template_stem(config["template_path"])
                 if self.last_bmp_path:
                     if "{device_id}" in str(self.last_bmp_path):
                         save_path = Path(
@@ -1095,9 +1115,9 @@ class HARenderer:
                     elif self.last_bmp_path.suffix.lower() == ".bmp":
                         save_path = self.last_bmp_path.resolve()
                     else:
-                        save_path = (self.last_bmp_path / f"{suffix}.bmp").resolve()
+                        save_path = (self.last_bmp_path / f"{suffix}-{screen}.bmp").resolve()
                 else:
-                    save_path = (self.storage_dir / f"{suffix}.bmp").resolve()
+                    save_path = (self.storage_dir / f"{suffix}-{screen}.bmp").resolve()
                 print(f"[render] saving last BMP to {save_path}", file=sys.stderr, flush=True)
                 save_path.parent.mkdir(parents=True, exist_ok=True)
                 save_path.write_bytes(png_bytes)
@@ -1224,6 +1244,7 @@ class HARenderer:
         template_path = Path(get_value("template", str(self.template_path)))
         if not template_path.is_absolute():
             template_path = (Path.cwd() / template_path).resolve()
+        template_path = _resolve_template_fallback(self.base_dir, template_path)
 
         output_template = get_value("output_path", str(self.output_path))
         output_template = output_template.format(

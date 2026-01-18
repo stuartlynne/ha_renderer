@@ -57,9 +57,9 @@
   {% endif %}
   {% if current_weather.icon %}
     {% if (current_weather.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
-      {{ cloud_icon(445 + (current_weather.icon_dx_big or 0), 91 + (current_weather.icon_dy_big or 0), 207 * (current_weather.icon_scale_big or 1), "#777", "cloudy" if (current_weather.condition or '') in ('cloudy','overcast') else "partly") }}
+      {{ cloud_icon(395 + (current_weather.icon_dx_big or 0), 111 + (current_weather.icon_dy_big or 0), 207 * (current_weather.icon_scale_big or 1), "#777", "cloudy" if (current_weather.condition or '') in ('cloudy','overcast') else "partly") }}
     {% else %}
-      <text x="{{ 345 + (current_weather.icon_dx_big or 0) }}" y="{{ 131 + (current_weather.icon_dy_big or 0) }}" class="icon-big" style="font-size: {{ 207 * 0.85 * (current_weather.icon_scale_big or 1) }}px;">{{ current_weather.icon }}</text>
+      <text x="{{ 295 + (current_weather.icon_dx_big or 0) }}" y="{{ 131 + (current_weather.icon_dy_big or 0) }}" class="icon-big" style="font-size: {{ 207 * 0.85 * (current_weather.icon_scale_big or 1) }}px;">{{ current_weather.icon }}</text>
     {% endif %}
   {% endif %}
   {% set top_temp = outside.temp_pair if outside and outside.temp_pair else current_weather.temp_pair %}
