@@ -2,21 +2,20 @@
 services:
 
     ha_renderer:
-        image: ${IMAGE}
+        image: ${IMAGE_NAME:-ha_renderer:private}
         privileged: true
         cap_add:
             - NET_ADMIN # Allows the container to manage network interfaces
             - NET_RAW   # Allows the container to create raw sockets
-        container_name: ${CONTAINER}
+        container_name: ha_renderer
         hostname: ${HOSTNAME}
         restart: always
         network_mode: host
-        #entrypoint: ["/ha_renderer.sh"]
+        entrypoint: ["/entry/ha_renderer.sh"]
         environment:
             PYTHONUNBUFFERED: 1
         volumes:
             - /etc/localtime:/etc/localtime:ro
             - /etc/timezone:/etc/timezone:ro
-            - ${ENTRY_DIR}:/entry
-            - ${DATA_DIR}:/data
-            - ${TEMPLATES_DIR}:/templates
+            - /srv/ha_renderer/entry:/entry
+            - /srv/ha_renderer/data:/data
