@@ -66,5 +66,5 @@ RUN cd / && git clone https://github.com/stuartlynne/ha_renderer.git
 RUN cd /ha_renderer && make install 
 
 #RUN chmod +x /ha_renderer/ha_renderer/ha_renderer.sh
-#ENTRYPOINT ["tail", "-f", "/dev/null"]
-ENTRYPOINT ["/entry/ha_renderer.sh"]
+ENTRYPOINT ["tail", "-f", "/dev/null"]
+#ENTRYPOINT ["/entry/ha_renderer.sh"]
