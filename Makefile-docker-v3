@@ -1,0 +1,124 @@
+# Makefile-docker-v3
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
+.DEFAULT_GOAL := help
+
+CONTAINER := $(notdir $(CURDIR))
+ENV       := $(CONTAINER).env
+HOSTNAME  := $(shell hostname -s 2>/dev/null || hostname)
+
+# Image name (override with: make IMAGE=foo:tag up)
+IMAGE ?= $(CONTAINER):private
+
+# Load per-project env into make, and (optionally) export to docker compose
+-include docker.env
+-include $(ENV)
+
+export CONTAINER_NAME := $(CONTAINER)
+export IMAGE_NAME     := $(IMAGE)
+export HOSTNAME
+
+COMPOSE ?= sudo docker compose
+DOCKER ?= sudo docker
+# First service from docker-compose.yml (override with: make SERVICE=zwave-js-ui logs)
+SERVICE ?= $(shell $(COMPOSE) config --services 2>/dev/null | head -n 1)
+
+.PHONY: help test build nocache pull up upw down restart clean cleanv really-clean ps logs bash sh config srvdirs cfgfiles scripts
+
+help: ## Show targets
+	@awk 'BEGIN{FS=":.*##"} /^[a-zA-Z0-9_.-]+:.*##/{printf "  %-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+test: ## Show key vars
+	@echo "CONTAINER=$(CONTAINER)"
+	@echo "SERVICE=$(SERVICE)"
+	@echo "IMAGE=$(IMAGE)"
+	@echo "DOCKERBUILDARGS=$(DOCKERBUILDARGS)"
+	@echo "HOSTNAME=$(HOSTNAME)"
+	@echo "DIRS=$(SRV_DIRS)"
+	@echo "CFGFILES=$(CFG_FILES)"
+	@echo "SCRIPTS=$(SCRIPTS)"
+	@echo "COPYTARGET=$(COPYTARGET)"
+
+build: ## Build local image if Dockerfile exists
+	@if [[ -f Dockerfile ]]; then $(DOCKER) build $(DOCKERBUILDARGS) -t $(IMAGE) .; fi
+
+nocache: ## Build image with --no-cache
+	@ if [[ -f Dockerfile ]]; then $(DOCKER) build --no-cache $(DOCKERBUILDARGS) -t $(IMAGE) .; fi
+
+pull: ## Pull referenced images
+	@$(COMPOSE) pull
+
+network: ## Create networks
+	@echo "NETWORKS=$(NETWORKS)"
+	@if [ -n "$(NETWORKS)" ]; then \
+		for net in $(NETWORKS); do \
+			echo network: $(net); \
+			$(DOCKER) network inspect $$net > /dev/null 2>&1 || $(DOCKER) network create $$net || true; \
+		done; \
+	fi
+
+up: scripts cfgfiles network build ## Start containers in background
+	@echo "IMAGE_NAME=$(IMAGE_NAME)"
+	$(COMPOSE) up -d
+
+upw: build ## Start containers in foreground
+	@$(COMPOSE) up
+
+down: ## Stop/remove containers + networks (keeps volumes)
+	$(COMPOSE) down --remove-orphans
+
+restart: ## Restart services
+	@$(COMPOSE) restart
+
+clean: ## Alias for down (safe)
+	@$(COMPOSE) down --remove-orphans
+
+cleanv: ## Remove containers + anonymous volumes (safer than down -v)
+	@$(COMPOSE) down --remove-orphans
+	@$(COMPOSE) rm -sfv
+
+really-clean: cleanv ## Also remove local/private image tag
+	@-$(DOCKER) image rm -f $(IMAGE) 2>/dev/null || true
+
+ps: ## Show status
+	@$(COMPOSE) ps
+
+logs: ## Follow logs
+	@echo "IMAGE_NAME=$(IMAGE_NAME)"
+	@echo "CONTAINER_NAME=$(CONTAINER_NAME)"
+	$(COMPOSE) logs -f --tail=200 $(SERVICE)
+
+bash: ## Exec bash (or sh) in SERVICE
+	$(COMPOSE) exec $(SERVICE) bash || $(COMPOSE) exec $(SERVICE) sh
+
+sh: ## Exec sh in SERVICE
+	@$(COMPOSE) exec $(SERVICE) sh
+
+config: ## Render resolved compose config
+	@$(COMPOSE) config
+
+dirs:
+	@if [ -n "$(SRV_DIRS)" ] ; then sudo mkdir -pv $(SRV_DIRS); fi
+
+scripts: dirs
+	@if [ -n "$(SCRIPTS)" ]; then \
+		for src in $(SCRIPTS); do \
+			dest="$(COPYTARGET)/$$src"; \
+			sudo mkdir -p "$$(dirname "$$dest")"; \
+			sudo cp -va "$$src" "$$dest"; \
+			sudo chmod +x "$$dest"; \
+		done; \
+	fi
+cfgfiles: dirs 
+	if [ -n "$(CFG_FILES)" ]; then \
+		for src in $(CFG_FILES); do \
+			if [ -e "$$src" ]; then \
+				dest="$(COPYTARGET)/$$src"; \
+				sudo mkdir -p "$$(dirname "$$dest")"; \
+				if [ ! -e "$$dest" ]; then sudo cp -va "$$src" "$$dest"; fi; \
+			fi; \
+		done; \
+	fi
+  
+
+-include Makefile-$(CONTAINER)
