@@ -1494,7 +1494,7 @@ def make_handler(renderer: HARenderer) -> type[BaseHTTPRequestHandler]:
                 config = renderer._effective_config_for_screen(device_id, screen_index, screen_count)
                 normalized = _normalize_device_id(device_id)
                 rendered_now = False
-                if renderer.refresh_seconds is None:
+                if renderer.refresh_seconds is None or not renderer.render_all_devices_on_refresh:
                     renderer.render_for_device(device_id, config)
                     rendered_now = True
                 else:
