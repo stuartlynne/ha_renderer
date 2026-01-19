@@ -12,4 +12,4 @@ fi
 echo PUBLIC_URL: ${PUBLIC_URL}
 
 
-echo exec /usr/local/bin/ha_renderer
+exec /usr/local/bin/ha_renderer
