@@ -40,6 +40,7 @@ test: ## Show key vars
 	@echo "COPYTARGET=$(COPYTARGET)"
 
 build: ## Build local image if Dockerfile exists
+	@echo "IMAGE_NAME=$(IMAGE_NAME)"
 	@if [[ -f Dockerfile ]]; then $(DOCKER) build $(DOCKERBUILDARGS) -t $(IMAGE) .; fi
 
 nocache: ## Build image with --no-cache
@@ -110,7 +111,7 @@ scripts: dirs
 		done; \
 	fi
 cfgfiles: dirs 
-	if [ -n "$(CFG_FILES)" ]; then \
+	@if [ -n "$(CFG_FILES)" ]; then \
 		for src in $(CFG_FILES); do \
 			if [ -e "$$src" ]; then \
 				dest="$(COPYTARGET)/$$src"; \
