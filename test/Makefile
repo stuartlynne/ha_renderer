@@ -6,7 +6,7 @@ TEMPLATE_DST := templates/trmnl.svg.j2 templates/trmnl_default.svg.j2 templates/
 #FONT_DST := fonts/TGL_0-1451Eng.ttf
 #DIRS_NEEDED := data templates fonts
 
-.PHONY: all clean ha-states ha-weather-list ha-weather ha-forecast ha-ws-forecast ha-outside ha-outside-history
+.PHONY: all clean ha-states ha-weather-list ha-weather ha-forecast ha-ws-forecast ha-outside ha-outside-history ha-summary-list ha-alert-list ha-summary ha-alert
 
 #all: $(DIRS_NEEDED) $(TEMPLATE_DST) $(FONT_DST)
 all: 
@@ -46,6 +46,28 @@ ha-weather-list:
 		| grep -o 'weather\\.[a-zA-Z0-9_]*' | sort -u; \
 	fi
 
+ha-summary-list:
+	@set -a; source $(ENV_FILE); set +a; \
+	if [[ -z "$$HA_TOKEN" ]]; then echo "HA_TOKEN is empty"; exit 1; fi; \
+	if command -v jq >/dev/null 2>&1; then \
+		curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/states" \
+		| jq -r '.[].entity_id | select(test("summary"; "i"))'; \
+	else \
+		curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/states" \
+		| grep -o '[a-zA-Z0-9_]*summary[a-zA-Z0-9_]*' | sort -u; \
+	fi
+
+ha-alert-list:
+	@set -a; source $(ENV_FILE); set +a; \
+	if [[ -z "$$HA_TOKEN" ]]; then echo "HA_TOKEN is empty"; exit 1; fi; \
+	if command -v jq >/dev/null 2>&1; then \
+		curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/states" \
+		| jq -r '.[].entity_id | select(test("alert"; "i"))'; \
+	else \
+		curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/states" \
+		| grep -o '[a-zA-Z0-9_]*alert[a-zA-Z0-9_]*' | sort -u; \
+	fi
+
 ha-weather:
 	@set -a; source $(ENV_FILE); set +a; \
 	if [[ -z "$$HA_TOKEN" ]]; then echo "HA_TOKEN is empty"; exit 1; fi; \
@@ -78,3 +100,18 @@ ha-outside-history:
 	start_time=$$(date -u -d '3 days ago' +%Y-%m-%dT%H:%M:%SZ); \
 	end_time=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
 	curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/history/period/$$start_time?filter_entity_id=$$OUTSIDE_ENTITY&end_time=$$end_time" | json_pp
+
+ha-summary:
+	@set -a; source $(ENV_FILE); set +a; \
+	if [[ -z "$$HA_TOKEN" ]]; then echo "HA_TOKEN is empty"; exit 1; fi; \
+	if [[ -z "$$SUMMARY_ENTITY" ]]; then echo "SUMMARY_ENTITY is empty"; exit 1; fi; \
+	(set -x; curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/states/$$SUMMARY_ENTITY") | json_pp
+
+ha-alert:
+	@set -a; source $(ENV_FILE); set +a; \
+	if [[ -z "$$HA_TOKEN" ]]; then echo "HA_TOKEN is empty"; exit 1; fi; \
+	if [[ -z "$$ALERT_ENTITIES" ]]; then echo "ALERT_ENTITIES is empty"; exit 1; fi; \
+	for entity in $$ALERT_ENTITIES; do \
+		echo "== $$entity =="; \
+		(set -x; curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/states/$$entity") | json_pp; \
+	done

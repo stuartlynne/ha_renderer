@@ -77,7 +77,16 @@
   {# humidity/pressure/wind moved to bottom row #}
   {# duplicate temp block removed #}
 
-  <line x1="20" y1="155" x2="{{ width - 20 }}" y2="155" class="divider" />
+  {% if alert_summary %}
+    {% if alert_summary|length > 1 %}
+      <text x="20" y="180" class="small" style="font-size: 29px;">{{ alert_summary[0] }}</text>
+      <text x="20" y="200" class="small" style="font-size: 29px;">{{ alert_summary[1] }}</text>
+    {% else %}
+      <text x="20" y="200" class="small" style="font-size: 29px;">{{ alert_summary[0] }}</text>
+    {% endif %}
+  {% endif %}
+
+  <line x1="20" y1="208" x2="{{ width - 20 }}" y2="208" class="divider" />
 
   <!-- Hourly row -->
   {% set hourly_items = forecast_hourly[2:] %}
@@ -88,22 +97,22 @@
     {% set slot = (width - 40) / hourly_count %}
     {% for item in hourly_items %}
       {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
-      <text x="{{ x }}" y="189" text-anchor="middle" class="small">{{ item.label or "" }}</text>
+      <text x="{{ x - 24 }}" y="248" text-anchor="middle" class="small" style="font-size: 23px;">{{ item.label or "" }}</text>
       {% if (item.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
-        {{ cloud_icon(x + (item.icon_dx or 0), 223 + (item.icon_dy or 0), 37 * (item.icon_scale or 1), "#777", "cloudy" if (item.condition or '') in ('cloudy','overcast') else "partly") }}
+        {{ cloud_icon(x + 26 + (item.icon_dx or 0), 248 + (item.icon_dy or 0), 37 * (item.icon_scale or 1), "#777", "cloudy" if (item.condition or '') in ('cloudy','overcast') else "partly") }}
       {% else %}
-        <text x="{{ x + (item.icon_dx or 0) }}" y="{{ 223 + (item.icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 37 * (item.icon_scale or 1) }}px;">{{ item.icon or "•" }}</text>
+        <text x="{{ x + 26 + (item.icon_dx or 0) }}" y="{{ 248 + (item.icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 37 * (item.icon_scale or 1) }}px;">{{ item.icon or "•" }}</text>
       {% endif %}
-      <text x="{{ x + 2 }}" y="261" text-anchor="end" class="label mid temp tall temp-main">
+      <text x="{{ x + 2 }}" y="285" text-anchor="end" class="label mid temp tall temp-main" style="font-size: 31px;">
         {{ item.temperature.c }}
       </text>
-      <text x="{{ x + 4 }}" y="261" text-anchor="start" class="tiny temp tall">
+      <text x="{{ x + 4 }}" y="285" text-anchor="start" class="tiny temp tall" style="font-size: 22px;">
         <tspan class="bar">|</tspan><tspan dx="2">{{ item.temperature.f }}</tspan>
       </text>
     {% endfor %}
   {% endif %}
 
-  <line x1="20" y1="285" x2="{{ width - 20 }}" y2="285" class="divider" />
+  <line x1="20" y1="315" x2="{{ width - 20 }}" y2="315" class="divider" />
 
   <!-- Daily row -->
   {% set daily_count = forecast_daily | length %}
@@ -113,22 +122,22 @@
     {% set slot = (width - 40) / daily_count %}
     {% for item in forecast_daily %}
       {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
-      <text x="{{ x }}" y="317" text-anchor="middle" class="day">{{ item.label or "" }}</text>
+      <text x="{{ x - 24 }}" y="353" text-anchor="middle" class="day">{{ item.label or "" }}</text>
       {% if (item.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
-        {{ cloud_icon(x + (item.icon_dx or 0), 355 + (item.icon_dy or 0), 37 * (item.icon_scale or 1), "#777", "cloudy" if (item.condition or '') in ('cloudy','overcast') else "partly") }}
+        {{ cloud_icon(x + 26 + (item.icon_dx or 0), 353 + (item.icon_dy or 0), 37 * (item.icon_scale or 1), "#777", "cloudy" if (item.condition or '') in ('cloudy','overcast') else "partly") }}
       {% else %}
-        <text x="{{ x + (item.icon_dx or 0) }}" y="{{ 355 + (item.icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 37 * (item.icon_scale or 1) }}px;">{{ item.icon or "•" }}</text>
+        <text x="{{ x + 26 + (item.icon_dx or 0) }}" y="{{ 353 + (item.icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 37 * (item.icon_scale or 1) }}px;">{{ item.icon or "•" }}</text>
       {% endif %}
-      <text x="{{ x + 2 }}" y="365" text-anchor="end" class="label mid temp tall temp-main">
+      <text x="{{ x + 2 }}" y="363" text-anchor="end" class="label mid temp tall temp-main" style="font-size: 31px;">
         {{ item.temperature.c }}
       </text>
-      <text x="{{ x + 4 }}" y="365" text-anchor="start" class="tiny temp tall">
+      <text x="{{ x + 4 }}" y="363" text-anchor="start" class="tiny temp tall" style="font-size: 22px;">
         <tspan class="bar">|</tspan><tspan dx="2">{{ item.temperature.f }}</tspan>
       </text>
-      <text x="{{ x + 2 }}" y="383" text-anchor="end" class="small dim temp tall">
+      <text x="{{ x + 2 }}" y="389" text-anchor="end" class="small dim temp tall" style="font-size: 24px;">
         {{ item.templow.c }}
       </text>
-      <text x="{{ x + 4 }}" y="383" text-anchor="start" class="tiny temp tall">
+      <text x="{{ x + 4 }}" y="389" text-anchor="start" class="tiny temp tall" style="font-size: 21px;">
         <tspan class="bar">|</tspan><tspan dx="2">{{ item.templow.f }}</tspan>
       </text>
     {% endfor %}

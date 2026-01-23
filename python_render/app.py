@@ -487,6 +487,55 @@ def _template_stem(path: Path) -> str:
     return path.stem
 
 
+def _select_alert_summary(entities_by_id: dict[str, dict], alert_entities: list[str]) -> str:
+    for entity_id in alert_entities:
+        entity = entities_by_id.get(entity_id)
+        if not entity:
+            continue
+        state = str(entity.get("state", "")).strip().lower()
+        if state in ("", "0", "none", "unknown", "unavailable"):
+            continue
+        attrs = entity.get("attributes", {}) or {}
+        alert_text = attrs.get("alert_1") or attrs.get("alert") or attrs.get("summary")
+        if alert_text:
+            return str(alert_text)
+        if state and state not in ("0", "unknown", "unavailable"):
+            return str(state)
+    return ""
+
+
+def _wrap_summary(text: str, width: int) -> list[str]:
+    if not text:
+        return []
+    prefixes = ("grey", "gray", "yellow", "orange", "red")
+    cleaned = text.strip()
+    lowered = cleaned.lower()
+    for prefix in prefixes:
+        if lowered.startswith(prefix):
+            cleaned = cleaned[len(prefix):].lstrip(" :-")
+            break
+    text = cleaned
+    max_chars = 30 if width <= 800 else 40
+    words = text.split()
+    if not words:
+        return [text]
+    line1 = ""
+    line2 = ""
+    for word in words:
+        if not line1:
+            line1 = word
+            continue
+        if len(line1) + 1 + len(word) <= max_chars:
+            line1 = f"{line1} {word}"
+        elif not line2:
+            line2 = word
+        elif len(line2) + 1 + len(word) <= max_chars:
+            line2 = f"{line2} {word}"
+    if line2:
+        return [line1, line2]
+    return [line1]
+
+
 def _quantize_grayscale(image: Image.Image, levels: int) -> Image.Image:
     levels = max(2, min(levels, 16))
     gray = image.convert("L")
@@ -564,6 +613,11 @@ class HARenderer:
         self.icon_offset_scale = _env_int("ICON_OFFSET_SCALE", 10)
         self.icon_offset_scale_big = _env_int("ICON_OFFSET_SCALE_BIG", 30)
         self.forecast_mode = os.getenv("FORECAST_MODE", "websocket").strip().lower()
+        self.alert_entities = [
+            e.strip()
+            for e in os.getenv("ALERT_ENTITIES", "").split()
+            if e.strip()
+        ]
         self.public_url = os.getenv("PUBLIC_URL", "").rstrip("/")
         self.log_path = _resolve_path(
             os.getenv("LOG_PATH"),
@@ -856,6 +910,8 @@ class HARenderer:
 
         inside = by_id.get(config.get("inside_entity", ""), {}) if config.get("inside_entity") else {}
         outside = by_id.get(config.get("outside_entity", ""), {}) if config.get("outside_entity") else {}
+        alert_summary_raw = _select_alert_summary(by_id, config.get("alert_entities", []))
+        alert_summary_lines = _wrap_summary(alert_summary_raw, width=self.width)
 
         if inside:
             inside_unit_override = config.get("inside_entity_units") or self.inside_entity_units
@@ -1024,6 +1080,7 @@ class HARenderer:
             forecast_hourly=hourly_items,
             forecast_daily=daily_items,
             current_weather=current,
+            alert_summary=alert_summary_lines,
             history_points=history_points,
             forecast_high_points=forecast_high_points,
             forecast_low_points=forecast_low_points,
@@ -1093,6 +1150,11 @@ class HARenderer:
                             file=sys.stderr,
                             flush=True,
                         )
+                alert_entities = config.get("alert_entities", [])
+                if alert_entities:
+                    for entity_id in alert_entities:
+                        if entity_id and entity_id not in entities_list:
+                            entities_list.append(entity_id)
                 entities = self._fetch_entities(entities_list) if entities_list else []
                 self.last_error = ""
                 self._log_entity_snapshot(entities)
@@ -1284,6 +1346,7 @@ class HARenderer:
             "template_path": template_path,
             "output_path": output_path,
             "entities": get_list("entities", self.entities),
+            "alert_entities": get_list("alert_entities", self.alert_entities),
             "inside_entity": get_value("inside_entity", self.inside_entity),
             "outside_entity": get_value("outside_entity", self.outside_entity),
             "weather_entity": get_value("weather_entity", self.weather_entity),
