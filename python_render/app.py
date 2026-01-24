@@ -44,6 +44,15 @@ def _battery_percent(voltage: float | None) -> int | None:
     return pct
 
 
+def _battery_percent_float(voltage: float | None) -> float | None:
+    if voltage is None:
+        return None
+    min_v = 3.2
+    max_v = 4.2
+    clamped = max(min_v, min(max_v, voltage))
+    return ((clamped - min_v) / (max_v - min_v)) * 100.0
+
+
 def _derive_device_state(raw_headers: dict[str, str]) -> dict:
     battery_voltage = None
     rssi = None
@@ -504,9 +513,9 @@ def _select_alert_summary(entities_by_id: dict[str, dict], alert_entities: list[
     return ""
 
 
-def _wrap_summary(text: str, width: int) -> list[str]:
+def _clean_summary(text: str) -> str:
     if not text:
-        return []
+        return ""
     prefixes = ("grey", "gray", "yellow", "orange", "red")
     cleaned = text.strip()
     lowered = cleaned.lower()
@@ -514,26 +523,100 @@ def _wrap_summary(text: str, width: int) -> list[str]:
         if lowered.startswith(prefix):
             cleaned = cleaned[len(prefix):].lstrip(" :-")
             break
-    text = cleaned
-    max_chars = 30 if width <= 800 else 40
+    return cleaned
+
+
+def _wrap_text(text: str, max_chars: int, max_lines: int) -> list[str]:
+    if not text:
+        return []
     words = text.split()
     if not words:
         return [text]
-    line1 = ""
-    line2 = ""
+    lines: list[str] = []
+    current = ""
     for word in words:
-        if not line1:
-            line1 = word
+        if not current:
+            current = word
             continue
-        if len(line1) + 1 + len(word) <= max_chars:
-            line1 = f"{line1} {word}"
-        elif not line2:
-            line2 = word
-        elif len(line2) + 1 + len(word) <= max_chars:
-            line2 = f"{line2} {word}"
-    if line2:
-        return [line1, line2]
-    return [line1]
+        if len(current) + 1 + len(word) <= max_chars:
+            current = f"{current} {word}"
+        else:
+            if len(lines) >= max_lines - 1:
+                # Fill the last line as much as possible, then truncate with ellipsis.
+                remaining = max_chars - len(current)
+                if remaining > 1:
+                    snippet = word[: max(0, remaining - 4)]
+                    if snippet:
+                        current = f"{current} {snippet}..."
+                    else:
+                        current = f"{current}..."
+                else:
+                    current = f"{current}..."
+                lines.append(current)
+                return lines
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    if len(lines) > max_lines:
+        return lines[:max_lines]
+    return lines
+
+
+def _extract_alert_text(entity: dict) -> str:
+    if not entity:
+        return ""
+    state = str(entity.get("state", "")).strip()
+    lowered = state.lower()
+    if lowered in ("", "0", "none", "unknown", "unavailable"):
+        state = ""
+    attrs = entity.get("attributes", {}) or {}
+    return str(
+        attrs.get("alert_1")
+        or attrs.get("alert")
+        or attrs.get("summary")
+        or state
+        or ""
+    )
+
+
+def _content_hash(context: dict) -> str:
+    payload = {
+        k: v
+        for k, v in context.items()
+        if k not in ("now", "meta", "line_height", "start_y", "device")
+    }
+    dumped = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(dumped.encode("utf-8")).hexdigest()
+
+
+def _entities_hash(entities: list[dict]) -> str:
+    cleaned = []
+    drop_attr = {"last_updated", "last_changed", "last_reported", "context"}
+    drop_forecast_keys = {"datetime", "time", "last_updated", "last_changed", "last_reported"}
+    for entity in entities:
+        attrs = entity.get("attributes", {})
+        filtered_attrs = {k: v for k, v in attrs.items() if k not in drop_attr}
+        for key in ("forecast", "forecast_daily", "forecast_hourly"):
+            value = filtered_attrs.get(key)
+            if isinstance(value, list):
+                normalized_list = []
+                for item in value:
+                    if isinstance(item, dict):
+                        normalized_item = {k: v for k, v in item.items() if k not in drop_forecast_keys}
+                        normalized_list.append(normalized_item)
+                    else:
+                        normalized_list.append(item)
+                filtered_attrs[key] = normalized_list
+        cleaned.append(
+            {
+                "entity_id": entity.get("entity_id"),
+                "state": entity.get("state"),
+                "attributes": filtered_attrs,
+            }
+        )
+    dumped = json.dumps(cleaned, sort_keys=True, default=str)
+    return hashlib.sha256(dumped.encode("utf-8")).hexdigest()
 
 
 def _quantize_grayscale(image: Image.Image, levels: int) -> Image.Image:
@@ -583,6 +666,8 @@ class HARenderer:
             "DISPLAY_REFRESH_RATE",
             self.refresh_seconds if self.refresh_seconds is not None else 60,
         )
+        self.lazy_refresh_max = _env_int("LAZY_REFRESH_MAX", 0)
+        print(f"lazy_refresh_max={self.lazy_refresh_max}", file=sys.stderr, flush=True)    
         self.output_format = os.getenv("OUTPUT_FORMAT", "bmp").strip().lower()
         self.save_last_bmp = os.getenv("SAVE_LAST_BMP", "false").lower() in ("1", "true", "yes", "on")
         self.early_display_threshold = _env_int("EARLY_DISPLAY_THRESHOLD", 5)
@@ -618,6 +703,9 @@ class HARenderer:
             for e in os.getenv("ALERT_ENTITIES", "").split()
             if e.strip()
         ]
+        self.summary_entity = os.getenv("SUMMARY_ENTITY", "").strip()
+        self.alert_cycle_timeout = _env_int("ALERT_CYCLE_TIMEOUT", 120)
+        self.battery_capacity_mah = _env_int("BATTERY_CAPACITY", 0)
         self.public_url = os.getenv("PUBLIC_URL", "").rstrip("/")
         self.log_path = _resolve_path(
             os.getenv("LOG_PATH"),
@@ -661,6 +749,16 @@ class HARenderer:
         self.device_screen_index: dict[str, int] = {}
         self.device_last_display: dict[str, float] = {}
         self.device_last_display_delta: dict[str, float] = {}
+        self.device_last_early: dict[str, bool] = {}
+        self.last_content_hash: dict[str, str] = {}
+        self.lazy_request_count: dict[str, int] = {}
+        self.display_lazy_count: dict[str, int] = {}
+        self.display_full_count: dict[str, int] = {}
+        self.battery_start_percent: dict[str, int] = {}
+        self.battery_last_percent: dict[str, int] = {}
+        self.alert_cycle_index: dict[str, int] = {}
+        self.alert_cycle_ts: dict[str, float] = {}
+        self.last_alert_count: dict[str, int] = {}
         self.max_cache_per_device = _env_int("MAX_CACHE_PER_DEVICE", 3)
         print(
             f"[config] cwd={Path.cwd()} device_config_env={raw_device_config!r} "
@@ -880,18 +978,9 @@ class HARenderer:
             self.last_error = f"forecast_ws: {exc}"
             return None
 
-    def _render(self, entities: list[dict], config: dict) -> bytes:
-        template_path = _resolve_template_fallback(self.base_dir, config["template_path"])
-        if not template_path.exists():
-            raise FileNotFoundError(f"template not found: {template_path}")
-
-        env = Environment(
-            loader=FileSystemLoader(template_path.parent),
-            autoescape=select_autoescape(),
-        )
-        template = env.get_template(template_path.name)
-
-        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    def _build_context(self, entities: list[dict], config: dict) -> dict:
+        now_dt = datetime.now().astimezone()
+        now = now_dt.strftime("%Y-%m-%d %H:%M")
         prepared = []
         by_id: dict[str, dict] = {}
         for entity in entities:
@@ -910,8 +999,32 @@ class HARenderer:
 
         inside = by_id.get(config.get("inside_entity", ""), {}) if config.get("inside_entity") else {}
         outside = by_id.get(config.get("outside_entity", ""), {}) if config.get("outside_entity") else {}
-        alert_summary_raw = _select_alert_summary(by_id, config.get("alert_entities", []))
-        alert_summary_lines = _wrap_summary(alert_summary_raw, width=self.width)
+        alert_candidates = []
+        for entity_id in config.get("alert_entities", []):
+            text = _extract_alert_text(by_id.get(entity_id, {}))
+            if text:
+                alert_candidates.append({"text": text, "kind": "alert"})
+        summary_entity = config.get("summary_entity")
+        if summary_entity:
+            summary_text = _extract_alert_text(by_id.get(summary_entity, {}))
+            if summary_text:
+                alert_candidates.append({"text": summary_text, "kind": "summary"})
+
+        device_id = ""
+        if isinstance(config.get("meta"), dict):
+            device_id = str(config["meta"].get("device_id", ""))
+        alert_index = self._current_alert_index(device_id, len(alert_candidates))
+        normalized = _normalize_device_id(device_id or "") or "default"
+        self.last_alert_count[normalized] = len(alert_candidates)
+        selected = alert_candidates[alert_index] if alert_candidates else {}
+        selected_text = _clean_summary(str(selected.get("text", "")))
+        selected_kind = str(selected.get("kind", "")) if selected else ""
+        if selected_kind == "summary":
+            max_chars = 55 if self.width <= 800 else 66
+            alert_summary_lines = _wrap_text(selected_text, max_chars=max_chars, max_lines=3)
+        else:
+            max_chars = 44 if self.width <= 800 else 54
+            alert_summary_lines = _wrap_text(selected_text, max_chars=max_chars, max_lines=2)
 
         if inside:
             inside_unit_override = config.get("inside_entity_units") or self.inside_entity_units
@@ -1053,7 +1166,7 @@ class HARenderer:
                     graph_min,
                     graph_max,
                 ) = _build_graph_series(
-                    now=datetime.now().astimezone(),
+                    now=now_dt,
                     history_days=self.history_days,
                     forecast_days=self.forecast_days,
                     history=history,
@@ -1066,34 +1179,50 @@ class HARenderer:
             except Exception as exc:  # noqa: BLE001
                 self.last_error = f"history: {exc}"
 
-        svg = template.render(
-            width=self.width,
-            height=self.height,
-            now=now,
-            entities=prepared,
-            entities_by_id=by_id,
-            inside=inside,
-            outside=outside,
-            weather=weather,
-            forecast=forecast,
-            temp_unit=temp_unit,
-            forecast_hourly=hourly_items,
-            forecast_daily=daily_items,
-            current_weather=current,
-            alert_summary=alert_summary_lines,
-            history_points=history_points,
-            forecast_high_points=forecast_high_points,
-            forecast_low_points=forecast_low_points,
-            day_ticks=day_ticks,
-            day_lines=day_lines,
-            graph_min=graph_min,
-            graph_max=graph_max,
-            device=device,
-            meta=meta,
-            last_error=self.last_error,
-            line_height=40,
-            start_y=120,
+        return {
+            "width": self.width,
+            "height": self.height,
+            "now": now,
+            "entities": prepared,
+            "entities_by_id": by_id,
+            "inside": inside,
+            "outside": outside,
+            "weather": weather,
+            "forecast": forecast,
+            "temp_unit": temp_unit,
+            "forecast_hourly": hourly_items,
+            "forecast_daily": daily_items,
+            "current_weather": current,
+            "alert_summary": alert_summary_lines,
+            "alert_summary_kind": selected_kind,
+            "history_points": history_points,
+            "forecast_high_points": forecast_high_points,
+            "forecast_low_points": forecast_low_points,
+            "day_ticks": day_ticks,
+            "day_lines": day_lines,
+            "graph_min": graph_min,
+            "graph_max": graph_max,
+            "device": device,
+            "meta": meta,
+            "last_error": self.last_error,
+            "line_height": 40,
+            "start_y": 120,
+        }
+
+    def _render(self, entities: list[dict], config: dict) -> tuple[bytes, str]:
+        template_path = _resolve_template_fallback(self.base_dir, config["template_path"])
+        if not template_path.exists():
+            raise FileNotFoundError(f"template not found: {template_path}")
+
+        env = Environment(
+            loader=FileSystemLoader(template_path.parent),
+            autoescape=select_autoescape(),
         )
+        template = env.get_template(template_path.name)
+
+        content_hash = self._compute_content_hash(entities, config)
+        context = self._build_context(entities, config)
+        svg = template.render(**context)
         if self.render_scale > 1:
             png_bytes = cairosvg.svg2png(
                 bytestring=svg.encode("utf-8"),
@@ -1116,8 +1245,8 @@ class HARenderer:
                     output = io.BytesIO()
                     image.save(output, format="PNG")
                     return output.getvalue()
-            return png_bytes
-        return _png_to_bmp(png_bytes)
+            return png_bytes, content_hash
+        return _png_to_bmp(png_bytes), content_hash
 
     def render_once(self) -> None:
         self.render_for_device(None, self._effective_config_for_screen(None, 0, 1))
@@ -1130,41 +1259,153 @@ class HARenderer:
             config = self._effective_config_for_screen(device_id, 0, screen_count)
             self.render_for_device(device_id, config)
 
-    def render_for_device(self, device_id: str | None, config: dict) -> None:
+    def _content_key(self, device_id: str | None, config: dict) -> str:
+        normalized = _normalize_device_id(device_id)
+        screen = _template_stem(config["template_path"])
+        return f"{normalized or 'default'}:{screen}"
+
+    def _compute_content_hash(self, entities: list[dict], config: dict) -> str:
+        return _entities_hash(entities)
+
+    def _log_entity_hashes(self, entities: list[dict]) -> None:
+        if not os.getenv("DEBUG_LAZY_ENTITIES", "").strip():
+            return
+        drop_attr = {"last_updated", "last_changed", "last_reported", "context"}
+        drop_forecast_keys = {"datetime", "time", "last_updated", "last_changed", "last_reported"}
+        for entity in entities:
+            entity_id = entity.get("entity_id")
+            attrs = entity.get("attributes", {})
+            filtered_attrs = {k: v for k, v in attrs.items() if k not in drop_attr}
+            for key in ("forecast", "forecast_daily", "forecast_hourly"):
+                value = filtered_attrs.get(key)
+                if isinstance(value, list):
+                    normalized_list = []
+                    for item in value:
+                        if isinstance(item, dict):
+                            normalized_item = {k: v for k, v in item.items() if k not in drop_forecast_keys}
+                            normalized_list.append(normalized_item)
+                        else:
+                            normalized_list.append(item)
+                    filtered_attrs[key] = normalized_list
+            payload = {
+                "entity_id": entity_id,
+                "state": entity.get("state"),
+                "attributes": filtered_attrs,
+            }
+            digest = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+            print(f"[lazy-entity] id={entity_id} hash={digest}", file=sys.stderr, flush=True)
+
+    def _current_alert_index(self, device_id: str | None, count: int) -> int:
+        if count <= 1:
+            return 0
+        normalized = _normalize_device_id(device_id or "") or "default"
+        last_ts = self.alert_cycle_ts.get(normalized)
+        if last_ts and (time.time() - last_ts) > self.alert_cycle_timeout:
+            self.alert_cycle_index[normalized] = 0
+        return self.alert_cycle_index.get(normalized, 0) % count
+
+    def _advance_alert_cycle(self, device_id: str | None, count: int) -> None:
+        if count <= 1:
+            return
+        normalized = _normalize_device_id(device_id or "") or "default"
+        idx = (self.alert_cycle_index.get(normalized, 0) + 1) % count
+        self.alert_cycle_index[normalized] = idx
+        self.alert_cycle_ts[normalized] = time.time()
+
+    def _update_battery_stats(self, device_id: str | None, headers: dict[str, str]) -> None:
+        if not os.getenv("DEBUG_BATTERY", "").strip():
+            return
+        normalized = _normalize_device_id(device_id) or "default"
+        device = _derive_device_state(headers)
+        percent = device.get("battery_percent")
+        if percent is None:
+            return
+        percent_f = _battery_percent_float(device.get("battery_voltage"))
+        if percent_f is None:
+            return
+        percent_fmt = f"{percent_f:.1f}"
+        if normalized not in self.battery_start_percent:
+            self.battery_start_percent[normalized] = percent_f
+            self.battery_last_percent[normalized] = percent_f
+            print(
+                f"[battery] device={normalized} start={percent_fmt}%",
+                file=sys.stderr,
+                flush=True,
+            )
+            return
+        last = self.battery_last_percent.get(normalized)
+        if last is not None and abs(last - percent_f) < 0.001:
+            return
+        self.battery_last_percent[normalized] = percent_f
+        start = self.battery_start_percent.get(normalized, percent_f)
+        lazy = self.display_lazy_count.get(normalized, 0)
+        full = self.display_full_count.get(normalized, 0)
+        total = lazy + full
+        delta = start - percent_f
+        rate = (delta / total) if total else 0.0
+        lazy_pct = (lazy / total * 100.0) if total else 0.0
+        mah_per_req = None
+        if self.battery_capacity_mah > 0 and total:
+            used_mah = (delta / 100.0) * self.battery_capacity_mah
+            mah_per_req = used_mah / total
+        print(
+            f"[battery] device={normalized} current={percent_f:.1f}% start={start:.1f}% "
+            f"delta={delta}% total={total} lazy={lazy} full={full} "
+            f"lazy_pct={lazy_pct:.1f}% delta_per_request={rate:.3f}%"
+            f"{'' if mah_per_req is None else f' mah_per_request={mah_per_req:.4f}'}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    def render_for_device(
+        self,
+        device_id: str | None,
+        config: dict,
+        entities_override: list[dict] | None = None,
+    ) -> None:
         with self.lock:
             try:
-                entities_list = config.get("entities", [])
-                if not entities_list:
-                    derived = [
-                        config.get("inside_entity", ""),
-                        config.get("outside_entity", ""),
-                        config.get("weather_entity", ""),
-                    ]
-                    entities_list = [e for e in derived if e]
+                if entities_override is not None:
+                    entities = entities_override
+                else:
+                    entities_list = config.get("entities", [])
                     if not entities_list:
-                        print(
-                            "[render] no entities configured "
-                            f"(inside={config.get('inside_entity')}, "
-                            f"outside={config.get('outside_entity')}, "
-                            f"weather={config.get('weather_entity')})",
-                            file=sys.stderr,
-                            flush=True,
-                        )
-                alert_entities = config.get("alert_entities", [])
-                if alert_entities:
-                    for entity_id in alert_entities:
-                        if entity_id and entity_id not in entities_list:
-                            entities_list.append(entity_id)
-                entities = self._fetch_entities(entities_list) if entities_list else []
+                        derived = [
+                            config.get("inside_entity", ""),
+                            config.get("outside_entity", ""),
+                            config.get("weather_entity", ""),
+                        ]
+                        entities_list = [e for e in derived if e]
+                        if not entities_list:
+                            print(
+                                "[render] no entities configured "
+                                f"(inside={config.get('inside_entity')}, "
+                                f"outside={config.get('outside_entity')}, "
+                                f"weather={config.get('weather_entity')})",
+                                file=sys.stderr,
+                                flush=True,
+                            )
+                    alert_entities = config.get("alert_entities", [])
+                    if alert_entities:
+                        for entity_id in alert_entities:
+                            if entity_id and entity_id not in entities_list:
+                                entities_list.append(entity_id)
+                    summary_entity = config.get("summary_entity")
+                    if summary_entity and summary_entity not in entities_list:
+                        entities_list.append(summary_entity)
+                    entities = self._fetch_entities(entities_list) if entities_list else []
                 self.last_error = ""
                 self._log_entity_snapshot(entities)
-                png_bytes = self._render(entities, config)
+                png_bytes, content_hash = self._render(entities, config)
             except Exception as exc:  # noqa: BLE001
                 self.last_error = str(exc)
-                png_bytes = self._render([], config)
+                png_bytes, content_hash = self._render([], config)
             digest = hashlib.sha256(png_bytes).hexdigest()
             normalized = _normalize_device_id(device_id)
             self.last_image_hash[normalized or "default"] = digest
+            content_key = self._content_key(device_id, config)
+            self.last_content_hash[content_key] = content_hash
+            self.lazy_request_count[content_key] = 0
             cache_key = f"{normalized or 'default'}:{digest}"
             self.image_cache[cache_key] = png_bytes
             key_list = self.device_image_keys.setdefault(normalized or "default", [])
@@ -1347,6 +1588,7 @@ class HARenderer:
             "output_path": output_path,
             "entities": get_list("entities", self.entities),
             "alert_entities": get_list("alert_entities", self.alert_entities),
+            "summary_entity": get_value("summary_entity", self.summary_entity),
             "inside_entity": get_value("inside_entity", self.inside_entity),
             "outside_entity": get_value("outside_entity", self.outside_entity),
             "weather_entity": get_value("weather_entity", self.weather_entity),
@@ -1405,6 +1647,7 @@ class HARenderer:
         self.device_last_display_delta[normalized] = delta if last_ts is not None else 0.0
         self.device_last_display[normalized] = now
         self.device_screen_index[normalized] = index
+        self.device_last_early[normalized] = advance
         return index
 
     def _mqtt_client(self) -> mqtt.Client:
@@ -1556,9 +1799,91 @@ def make_handler(renderer: HARenderer) -> type[BaseHTTPRequestHandler]:
                 screen_count = renderer._screen_count(device_id)
                 config = renderer._effective_config_for_screen(device_id, screen_index, screen_count)
                 normalized = _normalize_device_id(device_id)
+                if renderer.device_last_early.get(normalized or "default", False):
+                    alert_count = renderer.last_alert_count.get(normalized or "default", 0)
+                    renderer._advance_alert_cycle(device_id, alert_count)
+                lazy_max = renderer.lazy_refresh_max
+                early_raw = renderer.device_last_early.get(normalized or "default", False)
+                ignore_early = os.getenv("LAZY_IGNORE_EARLY", "true").lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                    "on",
+                )
+                early_effective = False if ignore_early else early_raw
+                entities = None
+                if lazy_max > 0 and not early_effective:
+                    entities_list = config.get("entities", [])
+                    if not entities_list:
+                        derived = [
+                            config.get("inside_entity", ""),
+                            config.get("outside_entity", ""),
+                            config.get("weather_entity", ""),
+                        ]
+                        entities_list = [e for e in derived if e]
+                    alert_entities = config.get("alert_entities", [])
+                    if alert_entities:
+                        for entity_id in alert_entities:
+                            if entity_id and entity_id not in entities_list:
+                                entities_list.append(entity_id)
+                    summary_entity = config.get("summary_entity")
+                    if summary_entity and summary_entity not in entities_list:
+                        entities_list.append(summary_entity)
+                    entities = renderer._fetch_entities(entities_list) if entities_list else []
+                    renderer._log_entity_hashes(entities)
+                    content_hash = renderer._compute_content_hash(entities, config)
+                    content_key = renderer._content_key(device_id, config)
+                    last_hash = renderer.last_content_hash.get(content_key)
+                    count = renderer.lazy_request_count.get(content_key, 0)
+                    if os.getenv("DEBUG_LAZY", "").strip():
+                        print(
+                            "[lazy] "
+                            f"device={normalized or 'default'} "
+                            f"key={content_key} "
+                            f"count={count} "
+                            f"max={lazy_max} "
+                            f"last_hash={last_hash or 'none'} "
+                            f"content_hash={content_hash} "
+                            f"hash_match={bool(last_hash and content_hash == last_hash)} "
+                            f"early_raw={early_raw} early_effective={early_effective}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                    if last_hash and content_hash == last_hash and count < lazy_max:
+                        renderer.lazy_request_count[content_key] = count + 1
+                        renderer.display_lazy_count[normalized or "default"] = (
+                            renderer.display_lazy_count.get(normalized or "default", 0) + 1
+                        )
+                        image_hash = renderer.last_image_hash.get(normalized or "default", "")
+                        display_refresh = config.get("display_refresh_rate")
+                        if display_refresh is None or str(display_refresh).strip() == "":
+                            display_refresh = renderer.display_refresh_rate
+                        response = {
+                            "status": 0,
+                            "image_url": _image_url_for_config(renderer, device_id, config, image_hash=image_hash),
+                            "filename": _filename_for_image(renderer, image_hash),
+                            "image_name": f"local-{image_hash[:12] if image_hash else 'unknown'}",
+                            "update_firmware": False,
+                            "firmware_url": "",
+                            "refresh_rate": str(display_refresh),
+                            "reset_firmware": False,
+                            "image_hash": image_hash,
+                        }
+                        renderer.record_request(
+                            "display",
+                            "GET",
+                            self.path,
+                            headers,
+                            client_ip=self.client_address[0],
+                            host=headers.get("Host"),
+                            response=response,
+                        )
+                        renderer._update_battery_stats(device_id, headers)
+                        self._send_json(response)
+                        return
                 rendered_now = False
                 if renderer.refresh_seconds is None or not renderer.render_all_devices_on_refresh:
-                    renderer.render_for_device(device_id, config)
+                    renderer.render_for_device(device_id, config, entities_override=entities)
                     rendered_now = True
                 else:
                     image_hash = renderer.last_image_hash.get(normalized or "default", "")
@@ -1598,6 +1923,10 @@ def make_handler(renderer: HARenderer) -> type[BaseHTTPRequestHandler]:
                     host=headers.get("Host"),
                     response=response,
                 )
+                renderer.display_full_count[normalized or "default"] = (
+                    renderer.display_full_count.get(normalized or "default", 0) + 1
+                )
+                renderer._update_battery_stats(device_id, headers)
                 self._send_json(response)
                 return
 
