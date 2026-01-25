@@ -756,6 +756,8 @@ class HARenderer:
         self.display_full_count: dict[str, int] = {}
         self.battery_start_percent: dict[str, int] = {}
         self.battery_last_percent: dict[str, int] = {}
+        self.battery_start_voltage: dict[str, float] = {}
+        self.battery_last_voltage: dict[str, float] = {}
         self.alert_cycle_index: dict[str, int] = {}
         self.alert_cycle_ts: dict[str, float] = {}
         self.last_alert_count: dict[str, int] = {}
@@ -1317,41 +1319,47 @@ class HARenderer:
             return
         normalized = _normalize_device_id(device_id) or "default"
         device = _derive_device_state(headers)
-        percent = device.get("battery_percent")
-        if percent is None:
+        voltage = device.get("battery_voltage")
+        if voltage is None:
             return
-        percent_f = _battery_percent_float(device.get("battery_voltage"))
+        percent_f = _battery_percent_float(voltage)
         if percent_f is None:
             return
-        percent_fmt = f"{percent_f:.1f}"
-        if normalized not in self.battery_start_percent:
+        if normalized not in self.battery_start_voltage:
+            self.battery_start_voltage[normalized] = voltage
+            self.battery_last_voltage[normalized] = voltage
             self.battery_start_percent[normalized] = percent_f
             self.battery_last_percent[normalized] = percent_f
             print(
-                f"[battery] device={normalized} start={percent_fmt}%",
+                f"[battery] device={normalized} start={voltage:.2f}V ({percent_f:.1f}%)",
                 file=sys.stderr,
                 flush=True,
             )
             return
-        last = self.battery_last_percent.get(normalized)
-        if last is not None and abs(last - percent_f) < 0.001:
+        last_voltage = self.battery_last_voltage.get(normalized)
+        if last_voltage is not None and abs(last_voltage - voltage) < 0.001:
             return
+        self.battery_last_voltage[normalized] = voltage
         self.battery_last_percent[normalized] = percent_f
-        start = self.battery_start_percent.get(normalized, percent_f)
+        start_v = self.battery_start_voltage.get(normalized, voltage)
+        start_pct = self.battery_start_percent.get(normalized, percent_f)
         lazy = self.display_lazy_count.get(normalized, 0)
         full = self.display_full_count.get(normalized, 0)
         total = lazy + full
-        delta = start - percent_f
-        rate = (delta / total) if total else 0.0
+        delta_v = start_v - voltage
+        delta_pct = start_pct - percent_f
+        rate_pct = (delta_pct / total) if total else 0.0
+        rate_v = (delta_v / total) if total else 0.0
         lazy_pct = (lazy / total * 100.0) if total else 0.0
         mah_per_req = None
         if self.battery_capacity_mah > 0 and total:
-            used_mah = (delta / 100.0) * self.battery_capacity_mah
+            used_mah = (delta_pct / 100.0) * self.battery_capacity_mah
             mah_per_req = used_mah / total
         print(
-            f"[battery] device={normalized} current={percent_f:.1f}% start={start:.1f}% "
-            f"delta={delta}% total={total} lazy={lazy} full={full} "
-            f"lazy_pct={lazy_pct:.1f}% delta_per_request={rate:.3f}%"
+            f"[battery] device={normalized} current={voltage:.2f}V ({percent_f:.1f}%) "
+            f"start={start_v:.2f}V ({start_pct:.1f}%) delta={delta_v:.3f}V ({delta_pct:.2f}%) "
+            f"total={total} lazy={lazy} full={full} lazy_pct={lazy_pct:.1f}% "
+            f"delta_per_request={rate_v:.4f}V ({rate_pct:.3f}%)"
             f"{'' if mah_per_req is None else f' mah_per_request={mah_per_req:.4f}'}",
             file=sys.stderr,
             flush=True,
