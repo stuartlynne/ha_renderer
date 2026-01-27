@@ -1,0 +1,207 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ width }}" height="{{ height }}" viewBox="0 0 {{ width }} {{ height }}">
+  <style>
+    @font-face {
+      font-family: "TGL_0-1451Eng";
+      src: url("../fonts/TGL_0-1451Eng.ttf");
+    }
+    text { font-family: "Noto Sans", "DejaVu Sans", "Noto Emoji", "Noto Color Emoji", Arial, sans-serif; fill: #000; font-weight: 700; }
+    .title { font-size: 72px; font-weight: 700; }
+    .label { font-size: 22px; fill: #000; }
+    .value { font-size: 40px; font-weight: 700; }
+    .muted { fill: #000; }
+    .dim { fill: #000; font-weight: 700; }
+    .mid { fill: #000; font-weight: 700; }
+    .bar { font-weight: 400; }
+    .divider { stroke: #000; stroke-width: 2; }
+    .icon { font-size: 37px; font-family: "Noto Sans Symbols2", "Noto Sans Symbols", "Noto Sans", "DejaVu Sans", Arial, sans-serif; font-weight: 700; }
+    .icon-big { font-size: 207px; font-family: "Noto Sans Symbols2", "Noto Sans Symbols", "Noto Sans", "DejaVu Sans", Arial, sans-serif; font-weight: 700; }
+    .small { font-size: 19px; }
+    .tiny { font-size: 17px; }
+    .day { font-size: 22px; font-weight: 700; }
+    .temp { font-family: "TGL_0-1451Eng", "DejaVu Sans", Arial, sans-serif; }
+    .temp-main { font-size: 31px; }
+    .temp-big { font-size: 114px; }
+    .temp-big-small { font-size: 44px; }
+    .temp-stack { font-size: 78px; font-weight: 700; }
+    .temp-stack-deg { font-size: 80%; }
+    .tall { transform: scale(1, 1.3); transform-origin: center; }
+  </style>
+  {% macro cloud_icon(x, y, size, shade="#000", variant="cloudy") -%}
+    {% set s = size / 60 %}
+    <g transform="translate({{ x }} {{ y }}) scale({{ s }})" fill="{{ shade }}">
+      <circle cx="-18" cy="8" r="9" />
+      {% if variant == "cloudy" %}
+        <circle cx="0" cy="10" r="10" />
+      {% endif %}
+      <circle cx="18" cy="8" r="9" />
+      <circle cx="-12" cy="0" r="12" />
+      <circle cx="6" cy="-10" r="16" />
+      {% if variant == "cloudy" %}
+        <circle cx="22" cy="0" r="12" />
+      {% endif %}
+    </g>
+  {%- endmacro %}
+  <rect x="0" y="0" width="{{ width }}" height="{{ height }}" fill="#fff" />
+
+  <!-- Current row -->
+  {% set condition = (current_weather.condition or "--").replace("_", "-") %}
+  {% if condition == "partlycloudy" %}
+    {% set condition = "partly-cloudy" %}
+  {% endif %}
+  {% set parts = condition.split("-") %}
+  <text x="20" y="56" class="title">{{ parts[0] }}</text>
+  {% if parts|length > 1 %}
+    <text x="20" y="136" class="title">{{ parts[1] }}</text>
+  {% endif %}
+  {% if current_weather.icon %}
+    {% if (current_weather.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
+      {{ cloud_icon(395 + (current_weather.icon_dx_big or 0), 111 + (current_weather.icon_dy_big or 0), 207 * (current_weather.icon_scale_big or 1), "#777", "cloudy" if (current_weather.condition or '') in ('cloudy','overcast') else "partly") }}
+    {% else %}
+      <text x="{{ 295 + (current_weather.icon_dx_big or 0) }}" y="{{ 131 + (current_weather.icon_dy_big or 0) }}" class="icon-big" style="font-size: {{ 207 * 0.85 * (current_weather.icon_scale_big or 1) }}px;">{{ current_weather.icon }}</text>
+    {% endif %}
+  {% endif %}
+  {% set top_temp = outside.temp_pair if outside and outside.temp_pair else current_weather.temp_pair %}
+  <text x="{{ width - 195 }}" y="155" class="value temp tall temp-big" text-anchor="end">
+    {% if top_temp.c_value is defined %}
+      {{ top_temp.c_value }}
+    {% else %}
+      {{ top_temp.c }}
+    {% endif %}
+  </text>
+  <circle cx="{{ width - 177 }}" cy="32" r="6" fill="none" stroke="#000" stroke-width="2" />
+  <text x="{{ width - 185 }}" y="120" class="temp-stack" text-anchor="start">
+    |{{ top_temp.f }}
+  </text>
+
+  {% if alert_summary %}
+    {% if alert_summary_kind == "summary" %}
+      {% if alert_summary|length == 3 %}
+        <text x="20" y="174" class="small" style="font-size: 22px;">{{ alert_summary[0] }}</text>
+        <text x="20" y="196" class="small" style="font-size: 22px;">{{ alert_summary[1] }}</text>
+        <text x="20" y="218" class="small" style="font-size: 22px;">{{ alert_summary[2] }}</text>
+      {% elif alert_summary|length == 2 %}
+        <text x="20" y="196" class="small" style="font-size: 22px;">{{ alert_summary[0] }}</text>
+        <text x="20" y="218" class="small" style="font-size: 22px;">{{ alert_summary[1] }}</text>
+      {% else %}
+        <text x="20" y="214" class="small" style="font-size: 22px;">{{ alert_summary[0] }}</text>
+      {% endif %}
+    {% else %}
+      {% if alert_summary|length > 1 %}
+        <text x="20" y="194" class="small" style="font-size: 29px;">{{ alert_summary[0] }}</text>
+        <text x="20" y="214" class="small" style="font-size: 29px;">{{ alert_summary[1] }}</text>
+      {% else %}
+        <text x="20" y="214" class="small" style="font-size: 29px;">{{ alert_summary[0] }}</text>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+
+  {% set top_divider = 228 %}
+  {% set bottom_divider = height - 30 %}
+  {% set mid_divider = top_divider + ((bottom_divider - top_divider) / 2) + 2 %}
+  <line x1="20" y1="{{ top_divider }}" x2="{{ width - 20 }}" y2="{{ top_divider }}" class="divider" />
+  <line x1="20" y1="{{ mid_divider }}" x2="{{ width - 20 }}" y2="{{ mid_divider }}" class="divider" />
+  <line x1="20" y1="{{ bottom_divider }}" x2="{{ width - 20 }}" y2="{{ bottom_divider }}" class="divider" />
+  <text x="7" y="{{ mid_divider + 18 }}" class="small" style="font-size: 16px;">night</text>
+
+  {% set daily_count = forecast_daily | length %}
+  {% if daily_count == 0 %}
+    <text x="20" y="{{ top_divider + 20 }}" class="label muted">No daily forecast</text>
+  {% else %}
+    {% set slot = (width - 40) / daily_count %}
+    {% for item in forecast_daily %}
+      {% set x = 20 + (loop.index0 * slot) + (slot / 2) %}
+      {% if loop.index0 > 0 %}
+        {% set line_x = 20 + (loop.index0 * slot) %}
+        <line x1="{{ line_x }}" y1="{{ top_divider }}" x2="{{ line_x }}" y2="{{ bottom_divider }}" class="divider" />
+      {% endif %}
+
+      <text x="{{ x - 60 }}" y="{{ top_divider + 18 }}" text-anchor="start" class="day" style="font-size: 20px; font-weight: 400;">{{ item.label }}</text>
+      {% if (item.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
+        {{ cloud_icon(x + 35 + (item.icon_dx or 0), mid_divider - 74 + (item.icon_dy or 0), 44 * (item.icon_scale or 1), "#777", "cloudy" if (item.condition or '') in ('cloudy','overcast') else "partly") }}
+      {% else %}
+        <text x="{{ x + 35 + (item.icon_dx or 0) }}" y="{{ mid_divider - 74 + (item.icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 44 * (item.icon_scale or 1) }}px;">{{ item.icon or "•" }}</text>
+      {% endif %}
+      <text x="{{ x - 6 }}" y="{{ mid_divider - 56 }}" text-anchor="end" class="label mid temp tall temp-main" style="font-size: 28px;">
+        {{ item.temperature.c }}
+      </text>
+      <text x="{{ x - 2 }}" y="{{ mid_divider - 56 }}" text-anchor="start" class="tiny temp tall">
+        <tspan class="bar">|</tspan><tspan dx="2">{{ item.temperature.f }}</tspan>
+      </text>
+      {% set day_label = item.condition_label or "" %}
+      {% if day_label|length > 14 %}
+        {% set day_head = (day_label[:14].rsplit(" ", 1)[0] if " " in day_label[:14] else day_label[:14]) %}
+        {% set day_tail = day_label[day_head|length:] %}
+        {% if day_tail.startswith(" ") %}{% set day_tail = day_tail[1:] %}{% endif %}
+        <text x="{{ x }}" y="{{ mid_divider - 18 }}" text-anchor="middle" class="small" style="font-size: 16px;">{{ day_head }}</text>
+        <text x="{{ x }}" y="{{ mid_divider - 2 }}" text-anchor="middle" class="small" style="font-size: 16px;">{{ day_tail }}</text>
+      {% else %}
+        <text x="{{ x }}" y="{{ mid_divider - 7 }}" text-anchor="middle" class="small" style="font-size: 16px;">{{ day_label }}</text>
+      {% endif %}
+
+      {% if (item.night_condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
+        {{ cloud_icon(x + 35 + (item.night_icon_dx or 0), mid_divider + 36 + (item.night_icon_dy or 0), 44 * (item.night_icon_scale or 1), "#777", "cloudy" if (item.night_condition or '') in ('cloudy','overcast') else "partly") }}
+      {% else %}
+        <text x="{{ x + 35 + (item.night_icon_dx or 0) }}" y="{{ mid_divider + 36 + (item.night_icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 44 * (item.night_icon_scale or 1) }}px;">{{ item.night_icon or item.icon or "•" }}</text>
+      {% endif %}
+      <text x="{{ x - 6 }}" y="{{ mid_divider + 28 }}" text-anchor="end" class="label mid temp tall temp-main" style="font-size: 28px;">
+        {{ item.templow.c }}
+      </text>
+      <text x="{{ x - 2 }}" y="{{ mid_divider + 28 }}" text-anchor="start" class="tiny temp tall">
+        <tspan class="bar">|</tspan><tspan dx="2">{{ item.templow.f }}</tspan>
+      </text>
+      {% set night_label = item.night_condition_label or "" %}
+      {% if night_label|length > 14 %}
+        {% set night_head = (night_label[:14].rsplit(" ", 1)[0] if " " in night_label[:14] else night_label[:14]) %}
+        {% set night_tail = night_label[night_head|length:] %}
+        {% if night_tail.startswith(" ") %}{% set night_tail = night_tail[1:] %}{% endif %}
+        <text x="{{ x }}" y="{{ mid_divider + 84 }}" text-anchor="middle" class="small" style="font-size: 16px;">{{ night_head }}</text>
+        <text x="{{ x }}" y="{{ mid_divider + 100 }}" text-anchor="middle" class="small" style="font-size: 16px;">{{ night_tail }}</text>
+      {% else %}
+        <text x="{{ x }}" y="{{ mid_divider + 94 }}" text-anchor="middle" class="small" style="font-size: 16px;">{{ night_label }}</text>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+
+  <text x="5" y="{{ height - 3 }}" class="temp" style="font-size: 21px; font-weight: 700; fill: #555;" transform="scale(1,1.2)" transform-origin="left {{ height - 3 }}px">
+    {{ now }}
+  </text>
+  <path d="M{{ 205 }} {{ height - 10 }} Q{{ 210 }} {{ height - 20 }} {{ 215 }} {{ height - 10 }} Q{{ 215 }} {{ height - 4 }} {{ 210 }} {{ height - 2 }} Q{{ 205 }} {{ height - 4 }} {{ 205 }} {{ height - 10 }} Z" fill="#000" />
+  <text x="220" y="{{ height - 3 }}" class="small muted">
+    {% if current_weather.humidity is not none %}{{ current_weather.humidity }}%{% else %}--{% endif %}
+  </text>
+  <text x="{{ width - 480 }}" y="{{ height - 2 }}" class="small muted">
+    {% if current_weather.pressure is not none %}{{ current_weather.pressure }}mb{% else %}--{% endif %}
+  </text>
+  <text x="{{ width - 330 }}" y="{{ height - 2 }}" class="small muted">
+    {% if current_weather.wind_speed is not none %}{{ current_weather.wind_speed }}kmh{% else %}--{% endif %}
+  </text>
+
+  {% if device.get("rssi") is not none or device.get("battery_percent") is not none %}
+    {% set wifi_x = width - 159 %}
+    {% if device.get("rssi") is not none %}
+      <text x="{{ wifi_x - 38 }}" y="{{ height - 2 }}" class="small muted">
+        {{ device.rssi_int }}
+      </text>
+    {% endif %}
+    <g transform="translate({{ wifi_x }}, {{ height - 10 }}) scale(1.1)">
+      <rect x="0" y="0" width="4" height="6" fill="#000" />
+      <rect x="6" y="-2" width="4" height="8" fill="#000" />
+      <rect x="12" y="-4" width="4" height="10" fill="#000" />
+      <rect x="18" y="-6" width="4" height="12" fill="#000" />
+    </g>
+    {% if device.get("battery_percent") is not none %}
+      <text x="{{ width - 119 }}" y="{{ height - 2 }}" class="small muted">
+        {{ device.battery_percent }}%
+      </text>
+    {% endif %}
+    <rect x="{{ width - 55 }}" y="{{ height - 16 }}" width="28" height="12" fill="none" stroke="#000" stroke-width="2" />
+    <rect x="{{ width - 26 }}" y="{{ height - 13 }}" width="3" height="6" fill="#000" />
+    {% if device.get("battery_level") in ("full","high") %}
+      <rect x="{{ width - 53 }}" y="{{ height - 14 }}" width="24" height="8" fill="#000" />
+    {% elif device.get("battery_level") == "medium" %}
+      <rect x="{{ width - 53 }}" y="{{ height - 14 }}" width="16" height="8" fill="#000" />
+    {% elif device.get("battery_level") == "low" %}
+      <rect x="{{ width - 53 }}" y="{{ height - 14 }}" width="8" height="8" fill="#000" />
+    {% endif %}
+  {% endif %}
+</svg>
