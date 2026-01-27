@@ -12,6 +12,7 @@ from datetime import datetime, time as dt_time, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from xml.etree import ElementTree
 import unicodedata
 import urllib.parse
 
@@ -121,6 +122,20 @@ def _format_day_label(dt: str | None) -> str:
     return parsed.strftime("%a")
 
 
+def _format_day_date(dt: str | None) -> str:
+    parsed = _parse_iso(dt)
+    if not parsed:
+        return ""
+    return parsed.strftime("%-d")
+
+
+def _format_condition_label(value: str | None) -> str:
+    if not value:
+        return ""
+    text = value.strip().replace("_", " ").replace("-", " ")
+    return " ".join(word.capitalize() for word in text.split())
+
+
 def _coerce_float_value(value: str | float | int | None) -> float | None:
     if value is None:
         return None
@@ -143,7 +158,9 @@ def _condition_icon(condition: str | None) -> str:
         "partly-cloudy": "☁",
         "cloudy": "☁",
         "overcast": "☁",
-        "rainy": "☂",
+        #"rainy": "☂",
+        #"rainy": "⛆",
+        "rainy": "🌧️",
         "pouring": "☂",
         "snowy": "❄",
         "snowy-rainy": "❄",
@@ -163,6 +180,31 @@ def _condition_icon(condition: str | None) -> str:
         if first in mapping:
             return mapping[first]
     return "•"
+
+
+def _strip_variation_selectors(value: str) -> str:
+    return value.replace("\ufe0f", "").replace("\ufe0e", "")
+
+
+def _map_envcan_condition(text: str, is_night: bool = False) -> str:
+    if not text:
+        return "clear-night" if is_night else "sunny"
+    lowered = text.lower()
+    if "thunder" in lowered or "lightning" in lowered:
+        return "lightning-rainy"
+    if "snow" in lowered or "flurr" in lowered:
+        return "snowy"
+    if "rain" in lowered or "shower" in lowered or "drizzle" in lowered:
+        return "rainy"
+    if "fog" in lowered or "mist" in lowered:
+        return "fog"
+    if "cloud" in lowered or "overcast" in lowered:
+        if "partly" in lowered or "mix" in lowered:
+            return "partlycloudy"
+        return "cloudy"
+    if "clear" in lowered or "sun" in lowered:
+        return "clear-night" if is_night else "sunny"
+    return "clear-night" if is_night else "sunny"
 
 
 def _icon_offset(condition: str | None) -> tuple[int, int]:
@@ -646,6 +688,13 @@ def _env_optional_int(name: str) -> int | None:
         return None
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    if value == "":
+        return default
+    return value in ("1", "true", "yes", "on")
+
+
 class HARenderer:
     def __init__(self) -> None:
         self.base_dir = Path(__file__).resolve().parent
@@ -706,6 +755,28 @@ class HARenderer:
         self.summary_entity = os.getenv("SUMMARY_ENTITY", "").strip()
         self.alert_cycle_timeout = _env_int("ALERT_CYCLE_TIMEOUT", 120)
         self.battery_capacity_mah = _env_int("BATTERY_CAPACITY", 0)
+        self.envcan_enabled = _env_bool("ENABLE_MSC_GEOMET") or _env_bool("ENABLE_MSC_GEONET") or _env_bool("ENVCAN_ENABLE")
+        self.envcan_forecast_url = os.getenv("ENVCAN_FORECAST_URL", "").strip()
+        self.envcan_geomet_base = os.getenv("ENVCAN_GEOMET_BASE", "https://api.weather.gc.ca").rstrip("/")
+        self.envcan_geomet_collection = os.getenv("ENVCAN_GEOMET_COLLECTION", "citypageweather-realtime").strip()
+        self.envcan_geomet_item_id = os.getenv("ENVCAN_GEOMET_ITEM_ID", "").strip()
+        self.envcan_query_minutes = _env_int(
+            "ENVCAN_QUERY_MINUTES",
+            _env_int("ENVCAN_QUERY_MINUES", 30),
+        )
+        self.envcan_enable_amqp = _env_bool("ENVCAN_ENABLE_AMQP")
+        self.envcan_amqp_url = os.getenv("ENVCAN_AMQP_URL", "").strip()
+        self.envcan_amqp_queue = os.getenv("ENVCAN_AMQP_QUEUE", "").strip()
+        self.envcan_last_fetch = 0.0
+        self.envcan_forecast: list[dict] = []
+        self.envcan_forecast_unit = "C"
+        self.envcan_alerts: list[str] = []
+        self.envcan_alert_lock = threading.Lock()
+        if not self.envcan_forecast_url and self.envcan_geomet_item_id:
+            self.envcan_forecast_url = (
+                f"{self.envcan_geomet_base}/collections/{self.envcan_geomet_collection}"
+                f"/items/{self.envcan_geomet_item_id}?f=json&lang=en"
+            )
         self.public_url = os.getenv("PUBLIC_URL", "").rstrip("/")
         self.log_path = _resolve_path(
             os.getenv("LOG_PATH"),
@@ -771,6 +842,8 @@ class HARenderer:
         print(f"[version] {VERSION}", file=sys.stderr, flush=True)
         self._load_device_state()
         self._load_device_config()
+        if self.envcan_enable_amqp:
+            self._start_envcan_amqp()
 
     def _load_device_state(self) -> None:
         if not self.device_state_path.exists():
@@ -980,6 +1053,268 @@ class HARenderer:
             self.last_error = f"forecast_ws: {exc}"
             return None
 
+    def _start_envcan_amqp(self) -> None:
+        if not self.envcan_amqp_url:
+            print(
+                "[envcan] AMQP enabled but ENVCAN_AMQP_URL not set",
+                file=sys.stderr,
+                flush=True,
+            )
+            return
+        try:
+            import pika  # type: ignore
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[envcan] AMQP enabled but pika is not available: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            return
+
+        def _run() -> None:
+            while True:
+                try:
+                    params = pika.URLParameters(self.envcan_amqp_url)
+                    connection = pika.BlockingConnection(params)
+                    channel = connection.channel()
+                    if self.envcan_amqp_queue:
+                        channel.queue_declare(queue=self.envcan_amqp_queue, durable=True)
+                        channel.basic_qos(prefetch_count=1)
+
+                        def _on_message(ch, method, properties, body) -> None:  # type: ignore[no-untyped-def]
+                            text = body.decode("utf-8", errors="replace").strip()
+                            if text:
+                                with self.envcan_alert_lock:
+                                    self.envcan_alerts = [text]
+                            ch.basic_ack(delivery_tag=method.delivery_tag)
+
+                        channel.basic_consume(queue=self.envcan_amqp_queue, on_message_callback=_on_message)
+                        channel.start_consuming()
+                    else:
+                        print(
+                            "[envcan] AMQP enabled but ENVCAN_AMQP_QUEUE not set",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        connection.close()
+                        return
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[envcan] AMQP error: {exc}", file=sys.stderr, flush=True)
+                    time.sleep(5)
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+
+    def _get_envcan_alerts(self) -> list[str]:
+        with self.envcan_alert_lock:
+            return list(self.envcan_alerts)
+
+    def _maybe_refresh_envcan(self) -> None:
+        if not self.envcan_enabled or not self.envcan_forecast_url:
+            return
+        now = time.time()
+        refresh_after = self.envcan_query_minutes * 60
+        if refresh_after <= 0:
+            refresh_after = 1800
+        if now - self.envcan_last_fetch < refresh_after and self.envcan_forecast:
+            return
+        forecast, unit = self._fetch_envcan_forecast_http()
+        if forecast:
+            self.envcan_forecast = forecast
+            self.envcan_forecast_unit = unit or self.envcan_forecast_unit
+            self.envcan_last_fetch = now
+
+    def _fetch_envcan_forecast_http(self) -> tuple[list[dict], str]:
+        if not self.envcan_forecast_url:
+            return ([], "")
+        try:
+            response = requests.get(self.envcan_forecast_url, timeout=20)
+            response.raise_for_status()
+        except Exception as exc:  # noqa: BLE001
+            self.last_error = f"envcan_http: {exc}"
+            return ([], "")
+
+        content_type = response.headers.get("content-type", "").lower()
+        text = response.text
+        if "json" in content_type or text.lstrip().startswith("{") or text.lstrip().startswith("["):
+            try:
+                payload = response.json()
+            except ValueError:
+                return ([], "")
+            return self._parse_envcan_json(payload)
+        return self._parse_envcan_xml(text)
+
+    def _parse_envcan_json(self, payload: object) -> tuple[list[dict], str]:
+        def _find_forecast_list(node: object) -> list[dict]:
+            if isinstance(node, list) and node and isinstance(node[0], dict):
+                if any(key in node[0] for key in ("temperature", "templow", "condition", "period")):
+                    return node
+            if isinstance(node, dict):
+                if isinstance(node.get("forecast"), list):
+                    return node["forecast"]  # type: ignore[return-value]
+                for value in node.values():
+                    found = _find_forecast_list(value)
+                    if found:
+                        return found
+            return []
+
+        node = payload
+        if isinstance(payload, dict) and isinstance(payload.get("features"), list) and payload["features"]:
+            feature = payload["features"][0]
+            if isinstance(feature, dict) and isinstance(feature.get("properties"), dict):
+                node = feature["properties"]
+            else:
+                node = feature
+
+        forecast = _find_forecast_list(node)
+        unit = ""
+        if isinstance(node, dict):
+            unit = str(
+                node.get("temperature_unit")
+                or node.get("temperatureUnit")
+                or node.get("unit")
+                or ""
+            ).upper()
+
+        if isinstance(node, dict) and isinstance(node.get("forecastGroup"), dict):
+            group = node["forecastGroup"]
+            forecast = group.get("forecasts") or []
+            unit = "C"
+
+        if forecast and isinstance(forecast[0], dict) and "period" in forecast[0]:
+            items: list[dict] = []
+            now = datetime.now().astimezone()
+            day_index = -1
+            for fc in forecast:
+                period_node = fc.get("period") or {}
+                period = (
+                    str(period_node.get("textForecastName", {}).get("en"))
+                    if isinstance(period_node, dict)
+                    else str(period_node)
+                )
+                summary = ""
+                abbr = fc.get("abbreviatedForecast")
+                if isinstance(abbr, dict) and isinstance(abbr.get("textSummary"), dict):
+                    summary = str(abbr.get("textSummary", {}).get("en") or "")
+                if not summary:
+                    if isinstance(fc.get("textSummary"), dict):
+                        summary = str(fc.get("textSummary", {}).get("en") or "")
+                    else:
+                        summary = str(fc.get("textSummary") or fc.get("summary") or fc.get("text") or "")
+
+                temp_value = None
+                temp_class = ""
+                temps = fc.get("temperatures", {}).get("temperature") if isinstance(fc.get("temperatures"), dict) else None
+                if isinstance(temps, list) and temps:
+                    temp_entry = temps[0]
+                    if isinstance(temp_entry, dict):
+                        temp_value = _coerce_float_value(temp_entry.get("value", {}).get("en") if isinstance(temp_entry.get("value"), dict) else temp_entry.get("value"))
+                        temp_class = str(temp_entry.get("class", {}).get("en") if isinstance(temp_entry.get("class"), dict) else temp_entry.get("class") or "").lower()
+                if temp_value is None:
+                    temp_value = _coerce_float_value(fc.get("temperature") or fc.get("value"))
+                if not temp_class:
+                    temp_class = str(fc.get("temperatureClass") or fc.get("class") or "").lower()
+                if os.getenv("DEBUG_ENVCAN", "").strip():
+                    print(
+                        "[envcan] period="
+                        f"{period!r} temp={temp_value!r} class={temp_class!r} summary={summary!r}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                is_night = any(token in period.lower() for token in ("night", "overnight", "tonight"))
+                condition = _map_envcan_condition(summary or period, is_night)
+                if not is_night:
+                    day_index += 1
+                    items.append(
+                        {
+                            "datetime": (now + timedelta(days=max(day_index, 0))).isoformat(),
+                            "condition": condition,
+                            "night_condition": "",
+                            "summary": summary or period,
+                            "night_summary": "",
+                            "temperature": temp_value,
+                            "templow": None,
+                        }
+                    )
+                else:
+                    if not items:
+                        day_index += 1
+                        items.append(
+                            {
+                                "datetime": (now + timedelta(days=max(day_index, 0))).isoformat(),
+                                "condition": condition,
+                                "night_condition": condition,
+                                "summary": summary or period,
+                                "night_summary": summary or period,
+                                "temperature": temp_value,
+                                "templow": temp_value,
+                            }
+                        )
+                    else:
+                        items[-1]["night_condition"] = condition
+                        items[-1]["night_summary"] = summary or period
+                        if items[-1].get("templow") is None:
+                            items[-1]["templow"] = temp_value
+                        if temp_class == "low" and items[-1].get("temperature") is None:
+                            items[-1]["temperature"] = temp_value
+            return (items, unit)
+
+        return (forecast, unit)
+
+    def _parse_envcan_xml(self, text: str) -> tuple[list[dict], str]:
+        try:
+            root = ElementTree.fromstring(text)
+        except ElementTree.ParseError:
+            return ([], "")
+
+        forecasts = root.findall(".//forecast")
+        items: list[dict] = []
+        now = datetime.now().astimezone()
+        day_index = -1
+        for fc in forecasts:
+            period = (fc.findtext("period") or "").strip()
+            summary = (fc.findtext("textSummary") or "").strip()
+            temp_node = fc.find(".//temperature")
+            temp_value = None
+            temp_class = ""
+            if temp_node is not None and temp_node.text:
+                try:
+                    temp_value = float(temp_node.text)
+                except ValueError:
+                    temp_value = None
+                temp_class = temp_node.attrib.get("class", "").lower()
+            is_night = any(token in period.lower() for token in ("night", "overnight", "tonight"))
+            condition = _map_envcan_condition(summary or period, is_night)
+            if not is_night:
+                day_index += 1
+                items.append(
+                    {
+                        "datetime": (now + timedelta(days=max(day_index, 0))).isoformat(),
+                        "condition": condition,
+                        "temperature": temp_value,
+                        "templow": None,
+                    }
+                )
+            else:
+                if not items:
+                    day_index += 1
+                    items.append(
+                        {
+                            "datetime": (now + timedelta(days=max(day_index, 0))).isoformat(),
+                            "condition": condition,
+                            "temperature": temp_value,
+                            "templow": temp_value,
+                        }
+                    )
+                else:
+                    if items[-1].get("templow") is None:
+                        items[-1]["templow"] = temp_value
+                    if temp_class == "low" and items[-1].get("temperature") is None:
+                        items[-1]["temperature"] = temp_value
+
+        unit = "C"
+        return (items, unit)
+
     def _build_context(self, entities: list[dict], config: dict) -> dict:
         now_dt = datetime.now().astimezone()
         now = now_dt.strftime("%Y-%m-%d %H:%M")
@@ -1002,6 +1337,10 @@ class HARenderer:
         inside = by_id.get(config.get("inside_entity", ""), {}) if config.get("inside_entity") else {}
         outside = by_id.get(config.get("outside_entity", ""), {}) if config.get("outside_entity") else {}
         alert_candidates = []
+        if self.envcan_enable_amqp:
+            for text in self._get_envcan_alerts():
+                if text:
+                    alert_candidates.append({"text": text, "kind": "alert"})
         for entity_id in config.get("alert_entities", []):
             text = _extract_alert_text(by_id.get(entity_id, {}))
             if text:
@@ -1066,6 +1405,11 @@ class HARenderer:
         forecast_hourly = attrs.get("forecast_hourly", [])
         if not forecast_daily:
             forecast_daily = attrs.get("forecast", [])
+        if self.envcan_enabled and self.envcan_forecast_url:
+            self._maybe_refresh_envcan()
+            if self.envcan_forecast:
+                forecast_daily = self.envcan_forecast
+                temp_unit = self.envcan_forecast_unit or temp_unit
 
         hourly_items = []
         for item in forecast_hourly[: self.forecast_hourly_limit]:
@@ -1073,7 +1417,7 @@ class HARenderer:
             icon_dx *= self.icon_offset_scale
             icon_dy *= self.icon_offset_scale
             icon_scale = _icon_scale(item.get("condition"))
-            icon = _condition_icon(item.get("condition"))
+            icon = _strip_variation_selectors(_condition_icon(item.get("condition")))
             hourly_items.append(
                 {
                     "label": _format_hour_label(item.get("datetime")),
@@ -1101,17 +1445,31 @@ class HARenderer:
             icon_dx *= self.icon_offset_scale
             icon_dy *= self.icon_offset_scale
             icon_scale = _icon_scale(item.get("condition"))
-            icon = _condition_icon(item.get("condition"))
+            icon = _strip_variation_selectors(_condition_icon(item.get("condition")))
+            night_condition = item.get("night_condition") or item.get("condition")
+            night_icon_dx, night_icon_dy = _icon_offset(night_condition)
+            night_icon_dx *= self.icon_offset_scale
+            night_icon_dy *= self.icon_offset_scale
+            night_icon_scale = _icon_scale(night_condition)
             daily_items.append(
                 {
                     "label": _format_day_label(item.get("datetime")),
+                    "date_label": _format_day_date(item.get("datetime")),
+                    "condition_label": item.get("summary") or _format_condition_label(item.get("condition")),
+                    "night_condition_label": item.get("night_summary") or item.get("summary") or _format_condition_label(item.get("condition")),
+                    "night_label": "Tonight" if len(daily_items) == 0 else "Night",
                     "temperature": _format_temp_pair(item.get("temperature"), temp_unit),
                     "templow": _format_temp_pair(item.get("templow"), temp_unit),
                     "condition": item.get("condition"),
+                    "night_condition": item.get("night_condition") or item.get("condition"),
                     "icon": icon,
                     "icon_dx": icon_dx,
                     "icon_dy": icon_dy,
                     "icon_scale": icon_scale,
+                    "night_icon": _strip_variation_selectors(_condition_icon(item.get("night_condition") or item.get("condition"))),
+                    "night_icon_dx": night_icon_dx,
+                    "night_icon_dy": night_icon_dy,
+                    "night_icon_scale": night_icon_scale,
                 }
             )
             if os.getenv("DEBUG_ICONS", "").strip():
@@ -1132,7 +1490,7 @@ class HARenderer:
 
         current = {
             "condition": weather.get("state"),
-            "icon": _condition_icon(weather.get("state")),
+            "icon": _strip_variation_selectors(_condition_icon(weather.get("state"))),
             "temperature": temp_value,
             "humidity": attrs.get("humidity"),
             "pressure": attrs.get("pressure"),

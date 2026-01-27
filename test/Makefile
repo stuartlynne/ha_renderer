@@ -6,7 +6,7 @@ TEMPLATE_DST := templates/trmnl.svg.j2 templates/trmnl_default.svg.j2 templates/
 #FONT_DST := fonts/TGL_0-1451Eng.ttf
 #DIRS_NEEDED := data templates fonts
 
-.PHONY: all clean ha-states ha-weather-list ha-weather ha-forecast ha-ws-forecast ha-outside ha-outside-history ha-summary-list ha-alert-list ha-summary ha-alert
+.PHONY: all clean ha-states ha-weather-list ha-weather ha-forecast ha-ws-forecast ha-outside ha-outside-history ha-summary-list ha-alert-list ha-summary ha-alert geomet-find
 
 #all: $(DIRS_NEEDED) $(TEMPLATE_DST) $(FONT_DST)
 all: 
@@ -72,7 +72,7 @@ ha-weather:
 	@set -a; source $(ENV_FILE); set +a; \
 	if [[ -z "$$HA_TOKEN" ]]; then echo "HA_TOKEN is empty"; exit 1; fi; \
 	if [[ -z "$$WEATHER_ENTITY" ]]; then echo "WEATHER_ENTITY is empty"; exit 1; fi; \
-	curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/states/$$WEATHER_ENTITY" | json_pp
+	set -x; curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/states/$$WEATHER_ENTITY" | json_pp
 	#curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/states/$$WEATHER_ENTITY" | jq -c -n 2
 
 ha-forecast:
@@ -83,6 +83,7 @@ ha-forecast:
 
 ha-ws-forecast:
 	@set -a; source $(ENV_FILE); set +a; \
+	echo "WEATHER_ENTITY: $$WEATHER_ENTITY"; \
 	if [[ -z "$$HA_TOKEN" ]]; then echo "HA_TOKEN is empty"; exit 1; fi; \
 	if [[ -z "$$WEATHER_ENTITY" ]]; then echo "WEATHER_ENTITY is empty"; exit 1; fi; \
 	python ../python_render/ws_forecast_test.py "$$HA_URL" "$$HA_TOKEN" "$$WEATHER_ENTITY" "$$FORECAST_TYPE" | json_pp
@@ -115,3 +116,8 @@ ha-alert:
 		echo "== $$entity =="; \
 		(set -x; curl -s -H "Authorization: Bearer $$HA_TOKEN" "$$HA_URL/api/states/$$entity") | json_pp; \
 	done
+
+geomet-find:
+	set -a; source $(ENV_FILE); set +a; \
+	if [[ -z "$$CITY" ]]; then echo "CITY is empty"; exit 1; fi; \
+	python ../scripts/geomet_lookup.py "$$CITY"

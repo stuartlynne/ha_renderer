@@ -27,7 +27,7 @@ RUN apk add --virtual build-deps gcc python3-dev musl-dev
 RUN apk add jpeg-dev zlib-dev libjpeg 
 
 # add missing Helvetica font
-RUN apk --update --upgrade --no-cache add fontconfig ttf-freefont ttf-dejavu font-noto font-noto-emoji terminus-font \ 
+RUN apk --update --upgrade --no-cache add fontconfig ttf-freefont ttf-dejavu font-noto font-noto-emoji terminus-font noto-fonts-extra \
 	&& fc-cache -f \ 
 	&& fc-list | sort 
 
