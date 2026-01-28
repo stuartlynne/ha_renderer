@@ -770,6 +770,7 @@ class HARenderer:
         self.envcan_last_fetch = 0.0
         self.envcan_forecast: list[dict] = []
         self.envcan_forecast_unit = "C"
+        self.envcan_summary = ""
         self.envcan_alerts: list[str] = []
         self.envcan_alert_lock = threading.Lock()
         if not self.envcan_forecast_url and self.envcan_geomet_item_id:
@@ -1118,21 +1119,23 @@ class HARenderer:
             refresh_after = 1800
         if now - self.envcan_last_fetch < refresh_after and self.envcan_forecast:
             return
-        forecast, unit = self._fetch_envcan_forecast_http()
+        forecast, unit, summary = self._fetch_envcan_forecast_http()
         if forecast:
             self.envcan_forecast = forecast
             self.envcan_forecast_unit = unit or self.envcan_forecast_unit
+            if summary:
+                self.envcan_summary = summary
             self.envcan_last_fetch = now
 
-    def _fetch_envcan_forecast_http(self) -> tuple[list[dict], str]:
+    def _fetch_envcan_forecast_http(self) -> tuple[list[dict], str, str]:
         if not self.envcan_forecast_url:
-            return ([], "")
+            return ([], "", "")
         try:
             response = requests.get(self.envcan_forecast_url, timeout=20)
             response.raise_for_status()
         except Exception as exc:  # noqa: BLE001
             self.last_error = f"envcan_http: {exc}"
-            return ([], "")
+            return ([], "", "")
 
         content_type = response.headers.get("content-type", "").lower()
         text = response.text
@@ -1140,11 +1143,11 @@ class HARenderer:
             try:
                 payload = response.json()
             except ValueError:
-                return ([], "")
+                return ([], "", "")
             return self._parse_envcan_json(payload)
         return self._parse_envcan_xml(text)
 
-    def _parse_envcan_json(self, payload: object) -> tuple[list[dict], str]:
+    def _parse_envcan_json(self, payload: object) -> tuple[list[dict], str, str]:
         def _find_forecast_list(node: object) -> list[dict]:
             if isinstance(node, list) and node and isinstance(node[0], dict):
                 if any(key in node[0] for key in ("temperature", "templow", "condition", "period")):
@@ -1176,10 +1179,19 @@ class HARenderer:
                 or ""
             ).upper()
 
+        summary_long = ""
         if isinstance(node, dict) and isinstance(node.get("forecastGroup"), dict):
             group = node["forecastGroup"]
             forecast = group.get("forecasts") or []
             unit = "C"
+            if forecast:
+                first = forecast[0]
+                if isinstance(first, dict):
+                    text_summary = first.get("textSummary")
+                    if isinstance(text_summary, dict):
+                        summary_long = str(text_summary.get("en") or "")
+                    elif text_summary:
+                        summary_long = str(text_summary)
 
         if forecast and isinstance(forecast[0], dict) and "period" in forecast[0]:
             items: list[dict] = []
@@ -1257,23 +1269,26 @@ class HARenderer:
                             items[-1]["templow"] = temp_value
                         if temp_class == "low" and items[-1].get("temperature") is None:
                             items[-1]["temperature"] = temp_value
-            return (items, unit)
+            return (items, unit, summary_long)
 
-        return (forecast, unit)
+        return (forecast, unit, summary_long)
 
-    def _parse_envcan_xml(self, text: str) -> tuple[list[dict], str]:
+    def _parse_envcan_xml(self, text: str) -> tuple[list[dict], str, str]:
         try:
             root = ElementTree.fromstring(text)
         except ElementTree.ParseError:
-            return ([], "")
+            return ([], "", "")
 
         forecasts = root.findall(".//forecast")
         items: list[dict] = []
+        summary_long = ""
         now = datetime.now().astimezone()
         day_index = -1
         for fc in forecasts:
             period = (fc.findtext("period") or "").strip()
             summary = (fc.findtext("textSummary") or "").strip()
+            if not summary_long and summary:
+                summary_long = summary
             temp_node = fc.find(".//temperature")
             temp_value = None
             temp_class = ""
@@ -1313,7 +1328,7 @@ class HARenderer:
                         items[-1]["temperature"] = temp_value
 
         unit = "C"
-        return (items, unit)
+        return (items, unit, summary_long)
 
     def _build_context(self, entities: list[dict], config: dict) -> dict:
         now_dt = datetime.now().astimezone()
@@ -1350,6 +1365,8 @@ class HARenderer:
             summary_text = _extract_alert_text(by_id.get(summary_entity, {}))
             if summary_text:
                 alert_candidates.append({"text": summary_text, "kind": "summary"})
+        elif self.envcan_enabled and self.envcan_summary:
+            alert_candidates.append({"text": self.envcan_summary, "kind": "summary"})
 
         device_id = ""
         if isinstance(config.get("meta"), dict):
