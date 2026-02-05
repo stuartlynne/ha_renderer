@@ -153,15 +153,14 @@ def _condition_icon(condition: str | None) -> str:
     key = condition.strip().lower().replace("_", "-")
     mapping = {
         "sunny": "☀",
-        "clear-night": "☾",
+        "clear": "☀",
+        "clear-night": "◐",
         "partlycloudy": "☁",
         "partly-cloudy": "☁",
         "cloudy": "☁",
         "overcast": "☁",
-        #"rainy": "☂",
-        #"rainy": "⛆",
-        "rainy": "🌧️",
-        "pouring": "☂",
+        "rainy": "≋",
+        "pouring": "≋",
         "snowy": "❄",
         "snowy-rainy": "❄",
         "fog": "≋",
@@ -169,8 +168,10 @@ def _condition_icon(condition: str | None) -> str:
         "hail": "☂",
         "lightning": "⚡",
         "lightning-rainy": "⚡",
+        
     }
     if key in mapping:
+        print(f"_condition_icon: raw condition={condition!r} {mapping[key]}", file=sys.stderr, flush=True)
         return mapping[key]
     key_no_hyphen = key.replace("-", "")
     if key_no_hyphen in mapping:
