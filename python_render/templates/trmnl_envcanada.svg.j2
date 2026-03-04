@@ -41,6 +41,22 @@
       {% endif %}
     </g>
   {%- endmacro %}
+  {% macro rain_icon(x, y, size, shade="#000") -%}
+    {% set s = size / 60 %}
+    <g transform="translate({{ x }} {{ y }}) scale({{ s }})">
+      <rect x="-35" y="-2" width="70" height="12" rx="6" ry="6" fill="#000" />
+      <circle cx="-20" cy="-4" r="8" fill="#000" />
+      <circle cx="-6" cy="-6" r="7" fill="#000" />
+      <circle cx="6" cy="-7" r="12" fill="#000" />
+      <circle cx="18" cy="-6" r="8" fill="#000" />
+      <circle cx="28" cy="-4" r="7" fill="#000" />
+      <g stroke="#000" stroke-width="4" stroke-linecap="round">
+        <line x1="-12" y1="16" x2="-18" y2="25" />
+        <line x1="0" y1="16" x2="-6" y2="25" />
+        <line x1="12" y1="16" x2="6" y2="25" />
+      </g>
+    </g>
+  {%- endmacro %}
   <rect x="0" y="0" width="{{ width }}" height="{{ height }}" fill="#fff" />
 
   <!-- Current row -->
@@ -54,7 +70,9 @@
     <text x="20" y="136" class="title">{{ parts[1] }}</text>
   {% endif %}
   {% if current_weather.icon %}
-    {% if (current_weather.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
+    {% if (current_weather.condition or '') in ('rainy','pouring') %}
+      {{ rain_icon(395 + (current_weather.icon_dx_big or 0), 111 + (current_weather.icon_dy_big or 0), 207 * (current_weather.icon_scale_big or 1), "#777") }}
+    {% elif (current_weather.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
       {{ cloud_icon(395 + (current_weather.icon_dx_big or 0), 111 + (current_weather.icon_dy_big or 0), 207 * (current_weather.icon_scale_big or 1), "#777", "cloudy" if (current_weather.condition or '') in ('cloudy','overcast') else "partly") }}
     {% else %}
       <text x="{{ 295 + (current_weather.icon_dx_big or 0) }}" y="{{ 131 + (current_weather.icon_dy_big or 0) }}" class="icon-big" style="font-size: {{ 207 * 0.85 * (current_weather.icon_scale_big or 1) }}px;">{{ current_weather.icon }}</text>
@@ -116,7 +134,9 @@
       {% endif %}
 
       <text x="{{ x - 60 }}" y="{{ top_divider + 18 }}" text-anchor="start" class="day" style="font-size: 20px; font-weight: 400;">{{ item.label }}</text>
-      {% if (item.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
+      {% if (item.condition or '') in ('rainy','pouring') %}
+        {{ rain_icon(x + 31 + (item.icon_dx or 0), mid_divider - 88 + (item.icon_dy or 0), 44 * (item.icon_scale or 1), "#777") }}
+      {% elif (item.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
         {{ cloud_icon(x + 35 + (item.icon_dx or 0), mid_divider - 74 + (item.icon_dy or 0), 44 * (item.icon_scale or 1), "#777", "cloudy" if (item.condition or '') in ('cloudy','overcast') else "partly") }}
       {% else %}
         <text x="{{ x + 35 + (item.icon_dx or 0) }}" y="{{ mid_divider - 74 + (item.icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 44 * (item.icon_scale or 1) }}px;">{{ item.icon or "•" }}</text>
@@ -138,7 +158,9 @@
         <text x="{{ x }}" y="{{ mid_divider - 7 }}" text-anchor="middle" class="small" style="font-size: 16px;">{{ day_label }}</text>
       {% endif %}
 
-      {% if (item.night_condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
+      {% if (item.night_condition or '') in ('rainy','pouring') %}
+        {{ rain_icon(x + 31 + (item.night_icon_dx or 0), mid_divider + 22 + (item.night_icon_dy or 0), 44 * (item.night_icon_scale or 1), "#777") }}
+      {% elif (item.night_condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
         {{ cloud_icon(x + 35 + (item.night_icon_dx or 0), mid_divider + 36 + (item.night_icon_dy or 0), 44 * (item.night_icon_scale or 1), "#777", "cloudy" if (item.night_condition or '') in ('cloudy','overcast') else "partly") }}
       {% else %}
         <text x="{{ x + 35 + (item.night_icon_dx or 0) }}" y="{{ mid_divider + 36 + (item.night_icon_dy or 0) }}" text-anchor="middle" class="icon" style="font-size: {{ 44 * (item.night_icon_scale or 1) }}px;">{{ item.night_icon or item.icon or "•" }}</text>

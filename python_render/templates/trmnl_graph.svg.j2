@@ -46,6 +46,17 @@
       {% endif %}
     </g>
   {%- endmacro %}
+  {% macro rain_icon(x, y, size, shade="#000") -%}
+    {% set s = size / 60 %}
+    <g transform="translate({{ x }} {{ y }}) scale({{ s }})">
+      {{ cloud_icon(0, 0, 60, shade, "cloudy") }}
+      <g stroke="{{ shade }}" stroke-width="4" stroke-linecap="round">
+        <line x1="-12" y1="18" x2="-18" y2="30" />
+        <line x1="0" y1="18" x2="-6" y2="30" />
+        <line x1="12" y1="18" x2="6" y2="30" />
+      </g>
+    </g>
+  {%- endmacro %}
   <rect x="0" y="0" width="{{ width }}" height="{{ height }}" fill="#fff" />
 
   <!-- Current row -->
@@ -59,7 +70,9 @@
     <text x="20" y="126" class="title">{{ parts[1] }}</text>
   {% endif %}
   {% if current_weather.icon %}
-    {% if (current_weather.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
+    {% if (current_weather.condition or '') in ('rainy','pouring') %}
+      {{ rain_icon(396 + (current_weather.icon_dx_big or 0), 111 + (current_weather.icon_dy_big or 0), 207 * (current_weather.icon_scale_big or 1), "#777") }}
+    {% elif (current_weather.condition or '') in ('cloudy','overcast','partlycloudy','partly-cloudy') %}
       {{ cloud_icon(396 + (current_weather.icon_dx_big or 0), 111 + (current_weather.icon_dy_big or 0), 207 * (current_weather.icon_scale_big or 1), "#777", "cloudy" if (current_weather.condition or '') in ('cloudy','overcast') else "partly") }}
     {% else %}
       <text x="{{ 295 + (current_weather.icon_dx_big or 0) }}" y="{{ 131 + (current_weather.icon_dy_big or 0) }}" class="icon-big" style="font-size: {{ 207 * 0.85 * (current_weather.icon_scale_big or 1) }}px;">{{ current_weather.icon }}</text>
