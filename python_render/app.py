@@ -1408,9 +1408,11 @@ class HARenderer:
                     break
         forecast = []
         temp_unit = ""
+        forecast_temp_unit = ""
         if weather.get("attributes"):
             forecast = weather["attributes"].get("forecast", [])[:5]
             temp_unit = weather["attributes"].get("temperature_unit", "")
+            forecast_temp_unit = temp_unit
 
         meta = config.get("meta", {})
         if meta.get("hide_device_state"):
@@ -1427,7 +1429,7 @@ class HARenderer:
             self._maybe_refresh_envcan()
             if self.envcan_forecast:
                 forecast_daily = self.envcan_forecast
-                temp_unit = self.envcan_forecast_unit or temp_unit
+                forecast_temp_unit = self.envcan_forecast_unit or forecast_temp_unit
 
         hourly_items = []
         for item in forecast_hourly[: self.forecast_hourly_limit]:
@@ -1439,7 +1441,7 @@ class HARenderer:
             hourly_items.append(
                 {
                     "label": _format_hour_label(item.get("datetime")),
-                    "temperature": _format_temp_pair(item.get("temperature"), temp_unit),
+                    "temperature": _format_temp_pair(item.get("temperature"), forecast_temp_unit),
                     "condition": item.get("condition"),
                     "icon": icon,
                     "icon_dx": icon_dx,
@@ -1476,8 +1478,8 @@ class HARenderer:
                     "condition_label": item.get("summary") or _format_condition_label(item.get("condition")),
                     "night_condition_label": item.get("night_summary") or item.get("summary") or _format_condition_label(item.get("condition")),
                     "night_label": "Tonight" if len(daily_items) == 0 else "Night",
-                    "temperature": _format_temp_pair(item.get("temperature"), temp_unit),
-                    "templow": _format_temp_pair(item.get("templow"), temp_unit),
+                    "temperature": _format_temp_pair(item.get("temperature"), forecast_temp_unit),
+                    "templow": _format_temp_pair(item.get("templow"), forecast_temp_unit),
                     "condition": item.get("condition"),
                     "night_condition": item.get("night_condition") or item.get("condition"),
                     "icon": icon,
@@ -1552,7 +1554,7 @@ class HARenderer:
                     forecast_daily=forecast_daily,
                     width=self.width,
                     height=self.height,
-                    desired_unit=_normalize_temp_unit(temp_unit),
+                    desired_unit=_normalize_temp_unit(forecast_temp_unit),
                 )
             except Exception as exc:  # noqa: BLE001
                 self.last_error = f"history: {exc}"
